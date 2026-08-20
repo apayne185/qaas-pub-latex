@@ -1,0 +1,47 @@
+%% input/0_introduction.tex
+\section{Introduction}
+\label{sec:introduction}
+
+Introduce the problem, motivation, and contributions here.
+
+    The recent transformation within the field of High Performance Computing (HPC) towards heterogeneous architectures has 
+    introduced issues such as the curse of dimensionality and the exponential scaling of Hilbert space, 
+    causing the focus to shift towards the potential advantages of Quantum Processing Units (QPUs). 
+    QPUs have emerged, not as the replacement for classical computation, but 
+    instead as specialized accelerators to be integrated into our existing classical systems, as they are capable of handling 
+    specific, formerly intractible computational tasks ~\parencite{rallis2025interfacingquantumcomputingsystems}. This has lead to the 
+    development of hybrid classical-quantum frameworks so to achieve new grounds in the fields of material science, 
+    molecular simulation, complex optimization, alongside many others.   
+
+    --> MENTION HOW WE REMOVE THE OPERATIONAL OVERHEAD FROM RESEARCHERS AND QPU/DATACENTER DEVELOPERS BY ORCHESTRATING THE COORDINATION OF CLOUD HARDWARES
+    --> Hamiltonian simulation, optimization, and quantum machine learning, with broader
+application areas including electronic structure and related chemistry, materials, and data-analysis
+workloads  (https://arxiv.org/pdf/2604.20912)
+
+    In our current Noisy Intermediate-Scale Quantum (NISQ) era, providing us with limited and noisy quantum hardware that is not yet 
+    able to achieve the "quantum advantage" ~\parencite{harrow2017quantumsupremacy}, the most promising path 
+    is hybrid algorithms that combine each system's computational benefits.  
+    Specifically, algorithms such as Variational Quantum Eigensolver (VQE) continually offload heavy computation to its classical resources while 
+    circuit execution is handled by QPUs ~\parencite{peruzzo2014variational, rallis2025interfacingquantumcomputingsystems} to bypass their hardware limitations. 
+    Alone, classical HPC structures struggle when the problem dimension grows exponentially (PLACE THE NUMERICAL REFERENCE HERE) alongside 
+    the size of the physical system being observed, prompting the exploration of quantum hardware as accelerators. 
+
+    Despite the theoretical potential of hybrid collaboration, there is a significant architectural gap, as  
+    there is no specialized middleware that bridges remote quantum and classical components alongside distributed and accelerated HPC resources. Classical HPC frameworks (MPI, CUDA)
+    are not designed to communicate directly with quantum control stacks and other existing quantum frameworks (Qiskit, Cirq, EXTEND REFERENCES HERE - IS IT BAD FAITH TO INCLUDE XACC?), which  
+    lack features to effectively integrate with distributed HPC environments. Without a standardized hybrid middleware, researchers face issues of high tail latencies when synchronizing
+    HPC resources and cloud-based QPUs, leading to performance bottlenecks that negate the possibility of a computational speedup offered by a
+    hybrid system. 
+
+    This paper presents a hybrid quantum-classical software stack that builds the middleware layer needed
+    to abstract hardware and automate the dispatching of tasks. Existing middlewares, such as XACC, operate synchronously within a single host, whereas this stack introduces MPI distributed parallelization alongside 
+    GPU acceleration, asynchronous QPU dispatching, and an intuitive API that abstracts the cloud-based QPU backend. The stack is benchmarked against VQE workflows 
+    on a single host Docker environment with MPI/GPU acceleration aiming to demonstrate measurable middleware speedup, shown through the combined GPU and MPI path reaching of a (2-2.5X SPEEDUP NOW, NO?)x 
+    speedup in the end-to-end wall-clock time when being compared to the baselines of serial, non-distributed classical implementations. 
+
+    --> SHOULD I MENTION MY SPECIFIC HARDWARES HERE, NOW, OR LATER IN THE PAPER SO TO STRESS THAT IT IS HARDWARE/CLOUD PLUGIN AGNOSTIC?
+    --> I WILL ALSO BE DOING A COMPARISON BETWEEN PENNYLANE LIGHTNING, QISKIT AER MPI, AND NWQ-SIM 
+
+    The outline of the following sections in this paper is as follows: Section 2 is a literature review on relevant quantum hardware, HPC middleware, and variational algorithms. Section 3
+    provides the system architecture, experimental configuration, and evaluation methodology. Section 4 expands on the experimental procedures with their results presented within Section 5. 
+    Section 6 is the discussion of these findings and their implications, Section 7 covers future work, and Section 8 provides the thesis conclusion. 

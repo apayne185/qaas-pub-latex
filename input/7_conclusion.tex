@@ -1,0 +1,36 @@
+\section{Conclusion}
+This research paper presented the design, implementation, and benchmarking of a hybrid quantum classical software 
+stack that is addressing the present day middleware gap with distributed HPC resources and cloud based QPUs. 
+The stack integrates MPI distributed classical computation, CUDA prepared GPU acceleration, and access to an IBM 
+Quantum QPU through a unified Python/C++ architecture. This middleware is validated through molecular ground state 
+energy estimation by using the Variational Quantum Eigensolver (VQE).
+
+The results of this projects experiment's have demonstrated several key contributions:
+
+\begin{enumerate}
+    \item \textbf{MPI distributed Pauli term evaluation produces a measurable speedup.} The CPU only, distributed stack achieved a $1.18\times$ speedup on molecule $H_{2}O$ (1086 Pauli terms) at $P=2$ MPI ranks when compared to its serial baseline. This speedup scales directly with the number of distributable Pauli terms, confirming the middleware's parallelization is effective for sufficiently complex molecules.
+
+    \item \textbf{GPU acceleration resolves the CPU scaling bottleneck.} The GPU Aer backend achieved a $1.51\times$ speedup for $H_{2}O$ at $P=8$ ranks over the serial baseline results, with $0.24\times$ regression on CPU-only at the same rank count. When tested, GPU strong scaling efficiency reached $71.1\%$ at $P=2$ and most importantly, did not degrade at $P \geq 4$, confirming Bayraktar et al.'s prediction that the $O(2^n)$ statevector construction would be primary bottleneck. The GPU weak scaling had a $6\times$ improvement at $P=8$ over the CPU path. These results were achieved on a consumer-grade NVIDIA GTX 1650 Mobile, which is representing a lower bound of GPU acceleration, as data-center GPUs such as A100s or H100s would return greater speedups.
+
+    \item \textbf{Near chemical accuracy was achieved for smaller molecules with HWE ansatzes through careful initialization.} The strategy of initializing HWE with near zero parameters proved effective as it keeps the ansatz within the physical particle number sector during early optimizations, as seen in Section~\ref{sec:hwe_limitation}, obtaining $2.4$ mHa error and $0.13$ mHa at $P=4$ within the strong scaling run. This delays the variational principle violation that is inherent to HWE ansatzes, as they do not conserve particle number. Larger molecules ($LiH, BeH_{2}, H_{2}O$, etc.) will require a particle conserving ansatz such as UCCSD. 
+    % The simplest benchmark molecule $H_{2}$ achieved $2.4$ mHa error, approaching $1.6$ mHa chemical accuracy threshold, while $H_{2}$ at $P=4$ achieved $0.1$ mHa (well within chemical accuracy). 
+
+    \item \textbf{The communication masking architecture is validated.} The established masking metric $M = T_{\text{accel}} / T_{\text{comm}}$ remained well above unity (by 2--3 orders of magnitude) in the simulator path ($M = 12$--$9000$). Confirms classical computation fully masks the MPI communication overhead, validating the central architecture hypothesis of this paper that predicted distributing the VQE's computationally heavy classical subroutines across several MPI ranks would not create a communication bottleneck but instead a computational speedup.
+
+    \item \textbf{End-to-end IBM QPU integration is functional.} The stack successfully completed its limit of 10 VQE iterations on IBM's \texttt{ibm\_marrakesh} processor, where each iteration averaged $42.1$s of wall-clock time (time dominated by the QPU RTT latency). In this test, the $0.97$ Ha error in QPU accuracy reflects limits of 10 iterations with shot noise and minimal error mitigation, however, the results validate the functionality of the complete middleware pipeline as a proof-of-work architectural concept over an accuracy benchmark. This includes a GPU-accelerated run, validating the triple heterogeneous architecture.
+
+    \item \textbf{Checkpoint resilience, stress testing confirm operational robustness.} When tested, the stack  withstood simulated QPU latency spikes, introduced to 0.5--2.0s random, asymmetrical delays across the 10 iterations, recovers from mid-run checkpoint deletion testing without data loss, and lastly maintains seamless MPI synchronization throughout all failure scenarios.
+\end{enumerate}
+
+However, the primary limitation of this stack remains to be the $O(2^n)$ per rank statevector cost.
+While the integration of GPU acceleration reduced this bottleneck sufficiently, for processor scaling to continue at 
+$P \geq 4$, the choice of the consumer-grade NVIDIA GTX 1650 Mobile and its limited memory bandwidth ($\sim$128 GB/s) prevent cuStateVec from 
+outperforming the CUDA thrust backend, due to current hardware constraints (largely the accessibility of quality HPC resources) rather than a developed architectural 
+limitation. Additionally considering the HWE ansatz's particle-number violation, while reduced through specific near-zero initialization 
+and conducting best-physical-energy tracking, reestablished a fundamental ansatz limitation that can only be fully resolved through the consideration of other 
+particle-number-conserving ansatzes such as UCCSD.
+
+Ultimately, this work demonstrates that a middleware solution for hybrid quantum-classical computing, focusing on 
+orchestration, distribution, and latency masking (complementing the industry's current standards which focus on circuit level optimization), produces measurable 
+performance improvements alongside a stable, resilient foundation for scaling to larger, more complex molecular systems in fields such as pharmaceutical research 
+and materials science during the evolution of modern quantum hardware.

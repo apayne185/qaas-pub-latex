@@ -1,5 +1,152 @@
-%% input/3_results.tex
-\section{Results}
-\label{sec:results}
+\section{Experiments}
+This section provides the experimental procedures for each layer of the stack. With the goal of reproducibility and comparison, all experiments used a SPSA fixed random seed ($\texttt{seed}=42$), ensuring no variance between runs. 
+Considering the variational principle, which guarantees $E_{VQE} \geq E_{FCI}$, results are reported as the "best physical energy", the lowest energy observed during 
+the optimization remaining at or above the FCI. This addresses the HWE ansatz's limitation, as it does not conserve particle number, leading SPSA to push $\theta$
+into exploring unphysical Hilbert space sectors (as discussed in Section~\ref{sec:hwe_limitation}, \parencite{kandala2017hardware}).
 
-Present and discuss your findings.
+\subsection{Experiment 1: Distributed Statevector VQE (Simulator)}
+This is the primary validation experiment of this stack, with the goal being to validate the distributed statevector evaluation path to return 
+physically correct ground-state energy estimates and then to compare the distributed path's accuracy against the serial baseline's results.
+
+In this experiment, each benchmark molecule from Table \ref{table:molecules} was configured with following identical variables:
+
+\begin{itemize}
+    \item \textbf{Backend}: Statevector simulator (exact, noiseless)  
+    \item \textbf{Ansatz}: HWE-adaptive ansatz (EfficientSU2, full entanglement, auto selected reps). 
+    \item \textbf{MPI ranks}: $P = 2$, the minimum rank count required to enable Pauli term distribution.
+    \item \textbf{Optimizer}: SPSA with dimension scaled step size  ($a= 0.628 / \sqrt{n_{\text{params}} / 8}$). 
+    \item \textbf{Seed}:42, remains fixed across all experiments to allow for reproducibility.
+    \item \textbf{Max iterations}: $\max(200,\; n_{\text{params}} \times 8)$, scaling with problem dimension. 
+    \item \textbf{Convergence}: Energy spread over the last 10 iterations $< 1.6 \times 10^{-3}$  Ha.         
+    \item \textbf{Initialization}: Parameters drawn from $\mathcal{U}(-0.1, 0.1)$, keeps the initial state near the Hartree-Fock reference $|0\ldots0\rangle$. 
+\end{itemize}   
+
+% During iterations of the MPI workflow, subsets of the Pauli terms of the molecular Hamiltonian were distributed across MPI ranks, where each rank independently 
+% builds the full $2^n$-dimensional statevector, which makes the stack's main bottleneck, costing $O(2^n)$ each iteration. Then in parallel, each rank uses their statevector to evaluates its local subset of $\langle\psi(\theta)|O_i|\psi(\theta)\rangle$ Pauli terms. 
+% After evaluation is completed, a global \texttt{MPI\_Allreduce(SUM)} combines the partial energies from each rank. Lastly, the masking metric $M = T_{\text{accel}} / T_{\text{comm}}$  
+% gets recorded one time per iteration.
+
+A control experiment using an identical SPSA parameters with slightly differing in HWE ansatz reps calculation and convergence criteria within execution paths, leading to a difference of 72 vs. 96 parameters for $LiH$, making the serial baseline marginally faster than LiH (therefore, the reported speedup is conservative). 
+This VQE was executed within a single Python process without using MPI ($P=1$), done to provide the $T_{\text{serial}}$ value. 
+Note that the serial baseline may converge at a different iteration count than the distributed stack, as the convergence criterion can trigger earlier/later depending on the SPSA trajectory in each execution path, caused by the floating point errors that occur 
+in \texttt{MPI\_Allreduce} reduction. 
+
+\subsection{Experiment 2: Scaling Analyses}
+The objective of this experiment is primarily to measure both Strong Scaling and Weak Scaling analyses across  $P \in \{1,2,4,8\}$ MPI ranks. 
+Both scaling analysis are repeated with GPU acceleration within Experiment 4.
+
+All four benchmark molecules (Table~\ref{table:molecules}) were run at full iteration counts for each rank 
+count $P \in \{1,2,4,8\}$ (as powers of 2 is standard for scaling studies, providing straightforward mapping to binary tree reduction), all within one Docker container on a single host. 
+Each configuration was executed once, as the deterministic statevector simulator with the fixed 
+random seed ($\texttt{seed}=42$) eliminates any variance between runs. $H_{2}O$ (14 qubits, 1086 Pauli terms, 896 iterations) was selected as the main 
+efficiency benchmark due to having the largest number of distributable Pauli terms. For each run, the total 
+wall-clock time, the per-iteration time, and MPI communication time get recorded and parallel efficiency then computed as:
+\begin{equation}
+    E(P) = \frac{T_1}{P \times T_P}
+\end{equation}
+where $T_1$ is the determined wall-clock time at $P= 1$.
+
+\subsubsection{Weak Scaling}
+At each rank count, a molecule is selected so that the per-rank workload (the Pauli terms/rank) scales together, as stated within Section~\ref{sec:methodology}.   
+Each molecular configuration is run 10 iterations, with all other configuration parameters remaining identical to those used 
+in Experiment 1. This scaling strategy uses 10 iterations instead of full runs as this provides sufficient runs to measure the per-iteration timing. 
+In this experiment, the stack's total wall-clock time, per-iteration time, per-iteration MPI communication time, and the median masking metric $M$ were recorded. 
+
+\subsection{Experiment 3: IBM Quantum QPU Validation}   
+This experiment is the real hardware validation, demonstrating the end-to-end middleware functionality when using a real quantum 
+processor (QPU) instead of a simulator. This experiment validates the stack's Python EstimatorV2 integration, circuit transpilation pipeline, job submission, retrieving results, SPSA parameter updates,  
+and the MPI coordination with cloud based QPU results. This experiment's goal is not accuracy, as 10 iterations is not sufficient to converge to a ground state energy. 
+
+The molecule $H_{2}$ was selected for the IBM QPU experiment due to it requiring the least amount of qubits,
+facing least complications with qubit decoherency. If the stack can function as expected for $H_2$, the 
+middleware is validated and indicates accuracy will improve with more QPU iterations and error mitigation (which will be considered for future work).
+This experiment uses an identical HWE-adaptive ansatz, SPSA hyperparameters, 
+and near zero initialization as Experiment 1. However, this specific VQE was configured with:
+\begin{itemize}
+    \item \textbf{Backend}: IBM \texttt{ibm\_marrakesh} (using 4 of 156 physical qubits, Heron processor)\parencite{rallis2025interfacingquantumcomputingsystems}
+    \item \textbf{MPI ranks}: $P=2$ (rank 0 manages QPU submission)
+    \item \textbf{Shots}: 4096 per circuit (chosen to balance statistical precision of $1/\sqrt{4096} \approx 0.016\;E_h$ against the queue time on the IBM open access plan)
+    \item \textbf{Error mitigation}: T-REx (resilience level 1, default EstimatorV2 settings)\parencite{cai2023quantumerrormitigation}
+    \item \textbf{Max iterations}: 10 (constrained by the queue limits of IBM open access plan)
+    \item \textbf{PUB batching}: Both $E(\theta^+)$ and $E(\theta^-)$ were submitted to SPSA as 2 Primitive Unified Blocs (PUBs) within a single EstimatorV2 job, reducing the QPU RTT wait by 50\%. 
+\end{itemize}
+
+The ansatz circuit uses logical/abstract qubits. Here, the ansatz was transpiled once against the physical QPU backend's specific coupling map by using Qiskit's preset pass 
+manager (optimization level=1), then observable was then remapped to the physical qubit layout and then the one-time mapped circuit and observable layout are locally cached, 
+as the circuit structure will not change and rebuilding will waste precious time. On IBM's 
+open access plan, Sessions (allowing multiple jobs to share a QPU reservation) are not supported, so each iteration submits an independent job through the 
+sessionless EstimatorV2 mode and then must re-enter the queue.    
+
+The QPU experiment was executed on March 26, 2026 against the QPU backend calibration data that was valid at the time of the remote
+job submission. Results for the IBM experiment are presented in Tables~\ref{table:ibm_results} and~\ref{table:ibm_iterations}.
+
+\subsection{Experiment 4: GPU-Accelerated Statevector}
+This experiment evaluates the effect of GPU acceleration on the distributed VQE pipeline, comparing the GPU 
+backend against the CPU-only results from Experiments 1 and 2. This will determine if the GPU acceleration will bypass the statevector build bottleneck as predicted by \textcite{bayraktar2023cuquantum}. 
+
+Within two different Docker configurations, all four benchmark molecules were run at $P \in \{1,2,4,8\}$ MPI ranks with GPU acceleration enabled, using the same HWE ansatz, SPSA hyperparameters, seed=42, and convergence criteria as Experiment 1 (all Python code remains unchanged). 
+The GPU statevector configuration uses Qiskit Aer's \texttt{AerSimulator(method='statevector', device='GPU')}, which internally assigns to NVIDIA's cuStateVec library for GPU-resident statevector 
+construction and gate operations. The Docker build configurations were tested for an evaluation of the effect of the cuStateVec integration on the stack's speed:
+\begin{itemize}
+    \item \textbf{GPU Aer (CUDA thrust)}: Qiskit Aer built with the CUDA thrust backend for basic GPU parallelism, with GPU-accelerated gate operations and the statevector management uses the default, unoptimized Aer CUDA kernels.
+    \item \textbf{GPU Aer (cuStateVec)}: Qiskit Aer built at compile time with cuStateVec linkage from the NVIDIA cuQuantum SDK~\parencite{bayraktar2023cuquantum}, keeping the full statevector in GPU memory with all gate operations and measurement handled by cuStateVec's optimized kernels.
+\end{itemize}
+
+Both configurations use the same Python code path; the difference is found within the compiled Qiskit Aer backend linked at Docker build time.
+
+The GPU hardware used was an NVIDIA GeForce GTX 1650 Mobile running CUDA 12.6, representing an accessible, lower bound on GPU-accelerated performance as described in Section ~\ref{sec:methodology}.   
+% as the superior A100 HPC grade hardware
+% would provide the stack with a substantially greater speedup. However, this experiment will still prove the proposed architectural hypothesis of this paper, 
+% that GPU acceleration reduces time spent on the local serial statevector build enough to 
+% continue scaling the MPI distribution. Future work with an A100 GPU that has 16x more bandwidth will result substantial improvement.  
+
+For each configuration, total wall-clock time, per-iteration time, and speedup relative to the serial baseline 
+were recorded. Strong scaling and weak scaling analyses were repeated with GPU acceleration to compare against 
+the CPU-only scaling trials from Experiment 2.
+
+\subsection{Experiment 5: Checkpoint Resilience}
+This experiment is conducted to validate the checkpoint restart mechanism of the stack, which verifies that 
+the optimization can resume from a previously saved $\theta$ state without a loss of convergence progress. Checkpoints 
+are saved every 5 iterations (hardcoded in the file \texttt{interface.py}), along with a rolling retention of the 5 most recent 
+checkpoint files logged per molecule. This interval balances recovery granularity (at most 5 iterations 
+of work lost on failure) against I/O overhead when tested with less complex molecules within our benchmark. 
+
+The molecule $H_{2}$ was selected in this experiment due to its low complexity and fast per iteration time, making it a 
+practical choice for repeated restart testing in this stack. The 7-layer diagnostic suite (\texttt{test\_layers\_run.py}) automatically executes this experiment:
+
+\begin{enumerate}
+    \item Run $H_{2}$ VQE for 5 iterations, then save a checkpoint of the current $\theta$ vector to an .npy file.
+    \item Verify the checkpoint file exists and contains the correct parameter vector shape (24 for $H_{2}$).
+    \item Restart VQE from the checkpoint, running 5 additional iterations (6--10).
+    \item Verify the optimizer resumes from the correct SPSA schedule position ($k=6$) and that the restarted energy continues from the checkpointed trajectory.
+\end{enumerate}
+
+The experiment passes if several criteria are satisfied: if the checkpoint file exists with the correct parameter vector shape, the optimizer has
+resumed from the SPSA schedule position $k=6$, as otherwise a reset to the initial values occur resulting in the optimizer to take large steps (destroying convergence), 
+and lastly, the restart energy at iteration 6 is within 0.5\,$E_h$ of the energy saved at iteration 5. 
+The tolerance of 0.5\,$E_h$ is to account for the random nature of SPSA perturbations while rejecting absolute failures such as a corrupted parameter vector of loaded zeros.
+
+\subsection{Experiment 6: Stress Testing}
+Two additional stress tests were conducted to validate the stack's robustness to less ideal conditions as the ones explored in Experiment 5. 
+Both tests also are executed automatically as part of the 7-layer diagnostic suite (\texttt{make trial}).
+
+\subsubsection{QPU Latency Spiking}
+This test simulates the realistic cloud QPU congestion by injecting random delays of 0.5--2.0\,s into the statevector 
+evaluation on odd-numbered, asymmetrical MPI ranks for unpredictable delays in the system, tested through 10 VQE iterations using $H_{2}$.  
+Criteria for passing is if all iterations complete without MPI timeout or a deadlock, all returned energies are finite 
+with no NaN or infinity from the delays, and lastly if the \texttt{MPI\_Allreduce} synchronization is maintained despite the variable per-rank timing. 
+The energy spread across iterations is then recorded for diagnostic purposes. 
+
+\subsubsection{Drop-Out Recovery}
+This final test simulates a midrun failure in the stack by deliberately deleting the most recent checkpoint after 10 iterations, 
+forcing a recovery from the earlier checkpoint at iteration 5. The procedure here is:
+\begin{enumerate}
+    \item Run $H_{2}$ VQE for 10 iterations (checkpoints are saved at iterations 5 and 10).
+    \item Delete the iteration-10 checkpoint, simulating data loss from a system crash from corruption or data logistics.
+    \item Restart from the iteration 5 checkpoint and runs 10 additional iterations (6--15), ensuring the stack can detect the missing checkpoint and automatically falls back to iteration 5.
+    \item Verify the restarted optimization continues from the correct $\theta$ state and SPSA schedule position at $k=6$ not $k=1$.
+\end{enumerate}
+
+This test passes if the stack detects the missing iteration 10 checkpoint and falls back to the saved iteration 5, if 
+the post recovery energy trajectory continues descending (the optimizer continues improving), and lastly if  after 15 iterations the final energy
+is lower than the energy documented at iteration 5, confirming that no optimization progress was permanently lost during these simulated crashes.

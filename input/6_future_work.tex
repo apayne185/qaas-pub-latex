@@ -1,5 +1,13 @@
-%% input/6_conclusion.tex
-\section{Conclusion}
-\label{sec:conclusion}
+\section{Future Work}
+\label{sec:future}
 
-Summarise contributions and outline future work.
+There are several extensions that would strengthen the current implementations of this middleware 
+stack in the hopes of broadening its applicability, speed, and accuracy:
+
+\begin{itemize}
+    \item \textbf{UCCSD Ansatz Integration}: The integration of the UCCSD ansatz, which preserves particle number and is already architecturally supported in the stack's ansatz tier system, is ongoing due to the stack encountering compatibility challenges with Qiskit Nature's gate decomposition pipeline. Resolving this issue would eliminate the need for tracking best-physical-energy. 
+    \item \textbf{Advanced Quantum Error Mitigation}: Integration with Zero Noise Extrapolation (ZNE) or Probabilistic Error Cancellation (PEC) with Qiskit's provided option of resilience level 2+ is predicted to significantly improve the QPU accuracy without hardware changes. Currently, the stack's EstimatorV2 integration supports these with \texttt{options.resilience\_level} parameter.
+    \item \textbf{Multi Node Deployment with InfiniBand}: All current scaling experiments for this stack were conducted on a single Docker host with MPI ranks sharing the CPU cores and memory bandwidth. Deploying on a multi-node cluster with efficient InfiniBand interconnect would eliminate shared memory contention that was observed at $P \geq 4$ and will provide a improved measurement of the stack's scaling abilities.
+    \item \textbf{Application Extensibility}: The stack currently includes a \texttt{FinanceProblem} class which maps portfolio optimization to a QUBO/Ising Hamiltonian, demonstrating that in the future this middleware will not be limited solely to quantum chemistry. Future work will extend the current stack applications to include combinatorial optimization (MaxCut, TSP) and materials science (periodic Hamiltonians), done through leveraging the same MPI distribution/QPU dispatch infrastructure. This application agnosticism will further set apart this stack from others such as XACC, which focuses solely on the mapping of quantum chemistry.
+    \item \textbf{Hardware Portability} The current dual path architecture (the C++ dispatcher for stack MPI coordination, Python primitives for QPU access) already provides a natural extension point for including additional quantum backends, such as Amazon Braket, Azure Quantum, etc.
+\end{itemize}

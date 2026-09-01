@@ -3,7 +3,7 @@
 Table \ref{table:distributed_results} presents the VQE ground state energy estimates within each of the 
 benchmark molecules of $H_2, LiH, BeH_2, H_{2}O$, and compares it against the results of both the FCI reference and the serial baseline.
 
-\begin{table}[htbp]
+\begin{table*}[htbp]
 \centering
 \renewcommand{\arraystretch}{1.2}
 \caption{Distributed stack VQE results (P=2 MPI ranks, statevector simulator, CPU only, seed=42). The best physical energy is the lowest energy observed at/above the molecules FCI reference.}
@@ -17,9 +17,9 @@ LiH & 12 & 631  & 96  & $-7.5463$ & $-7.8825$ & $0.3362$ & No   & 768  \\ \hline
 BeH\textsubscript{2} & 14 & 666  & 112 & $-15.5557$ & $-15.5951$ & $0.0394$ & No ($25\times$) & 896  \\ \hline
 H\textsubscript{2}O & 14 & 1086 & 112 & $-74.7921$ & $-75.0124$ & $0.2203$ & No & 896  \\ \hline
 \end{tabular}}
-\end{table} 
+\end{table*} 
 
-\begin{table}[htbp]
+\begin{table*}[htbp]
 \centering
 \renewcommand{\arraystretch}{1.2}
 \caption{Serial baseline VQE results (single process, no MPI, matching SPSA hyperparameters with minor ansatz differences noted in Section 4, seed=42). Both the distributed stack and serial baseline use near zero parameter initialization, track the best-physical energy.}
@@ -32,7 +32,7 @@ LiH & $-7.8803$ & $-7.8825$ & $0.0022$ & 576 & $41.62$ \\ \hline
 BeH\textsubscript{2} & $-15.5557$ & $-15.5951$ & $0.0394$ & 896 & $173.84$ \\ \hline
 H\textsubscript{2}O & $-74.7892$ & $-75.0124$ & $0.2232$ & 896 & $227.23$ \\ \hline
 \end{tabular}
-\end{table}
+\end{table*}
 
 In the stack, the benchmark molecule $H_{2}$ achieved an absolute error of 2.4 mHa, approaching the chemical accuracy threshold 
 of 1.6 mHa (1 kcal/mol). Notably from these results, the serial baseline achieved a lower error on $LiH$ (2.2 mHa compared to the much higher 336.2 mHa) 
@@ -84,7 +84,7 @@ bottleneck, so the CPU-QPU bottleneck \parencite{cruise2020practicalquantumcompu
 
 \subsection{Strong Scaling}
 \label{sec:results_scaling}
-\begin{table}[!ht]
+\begin{table*}[!ht]
 \centering
 \renewcommand{\arraystretch}{1.2}
 \begin{minipage}{\textwidth}
@@ -116,7 +116,7 @@ H\textsubscript{2}O & $253.06$ & $252.79$ & $488.25$ & $1038.50$ \\ \hline
 8 & $1038.50$ & $0.24\times$ & $8.00\times$ & $3.0\%$  \\ \hline
 \end{tabular}
 \end{minipage}
-\end{table}
+\end{table*}
 
 Table~\ref{table:scaling_molecules} shows that the CPU-only scaling provides negligible benefit even at $P=2$, with $H_{2}O$ achieving only $1.00\times$ speedup at $50.1\%$ efficiency (Table~\ref{table:scaling_efficiency}). The scaling degrades further at $P=4$ ($0.52\times$) and $P=8$ ($0.24\times$), demonstrating that on CPU-only shared-memory hardware, the MPI distribution overhead exceeds the benefit of distributing Pauli terms. This regression is due to two main factors:   
 \begin{enumerate}

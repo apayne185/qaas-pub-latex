@@ -14,12 +14,12 @@ GPU accelerated classical math (microseconds), MPI internode communication (mill
 QPU Round-Trip Time (RTT)(seconds). Through these considerations, this middleware stack moves beyond the previously examined single host, synchronous execution model found in the 
 examples of hybrid middleware like XACC \parencite{mccaskey2018xacc} and the HWE-SPSA-VQE research-based setup of \textcite{kandala2017hardware} that was explored in this paper's Literature Review. 
 
-\begin{figure}[htbp]
+\begin{figure*}[htbp]
     \centering
     \includegraphics[width=0.65\textwidth]{graphics/system_arch_diagram.png}
     \caption{Triple Heterogeneous System Architecture.}
     \label{fig:system_architecture}
-\end{figure}
+\end{figure*}
 
 \subsubsection{Orchestration Layer: Distributed Memory and MPI Manager-Worker Topology}
 This top-level layer implements a manager-worker topology that utilizes Message Passing Interface (MPI) in order 
@@ -36,12 +36,12 @@ classical-quantum components, the stack allows ranks to remain active and begin 
 waiting for the circuit results from the cloud-based QPU. Once worker ranks receive the expectation values, they 
 execute a \texttt{MPI\_allreduce} aggregation for each rank's partial energy and then to update the global objective function. 
 
-\begin{figure}[htbp]
+\begin{figure*}[htbp]
     \centering
     \includegraphics[width=0.65\textwidth]{graphics/spsa_topology.png}
     \caption{Distributed SPSA Topology}
     \label{fig:spsa_topology}
-\end{figure}
+\end{figure*}
 
 \subsubsection{Acceleration Layer: Intra-Process CUDA-Kernel Execution}
 This layer follows the findings of \textcite{bayraktar2023cuquantum} and is designed for 
@@ -146,7 +146,7 @@ middleware distribution is basis-set agnostic, as larger basis sets would provid
 Four molecules of increasing complexity are selected to be benchmark targets, progressively providing sufficiently complex Hilbert space that can test the 
 efficiency of the MPI/CUDA distribution while still using a manageable size of molecules not exceeding the coherency limitations of modern day QPUs. 
 
-\begin{table}[htbp]
+\begin{table*}[htbp]
 \centering
 \renewcommand{\arraystretch}{1.2}
 \begin{tabular}{|l|c|c|c|c|}
@@ -159,7 +159,7 @@ H\textsubscript{2}O & 8  & 14 & 1086 & $-75.0124$ \\ \hline
 \end{tabular}   
 \caption{4 benchmark molecules with STO-3G basis, FCI energies sourced from PySCF Full Configuration Interaction solver.}
 \label{table:molecules}
-\end{table}   
+\end{table*}   
 
 The progression that occurs from the simplest molecule $H_2$ (4 qubits, 15 Pauli terms, fits within the memory of a single MPI 
 rank) to $H_{2}O$ (14 qubits, 1086 Pauli terms) \parencite{kandala2017hardware} stresses each layer of the middleware. This includes stressing the tasks of parameter broadcasting, 
@@ -236,7 +236,7 @@ If $M \ge 1$, then there is enough meaningful work within the classical componen
         \text{Throughput} = \frac{N_{\text{iterations}}}{T_{\text{total}}}
 \end{equation}
 
-\begin{table}[htbp]
+\begin{table*}[htbp]
 \centering
 \renewcommand{\arraystretch}{1.2}
 \small

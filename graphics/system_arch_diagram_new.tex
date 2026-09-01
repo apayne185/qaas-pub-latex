@@ -1,0 +1,93 @@
+\documentclass[border=10pt]{standalone}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, backgrounds, calc}
+\usepackage{mathptmx}
+
+\definecolor{orchblue}{RGB}{70,130,180}
+\definecolor{accgreen}{RGB}{76,153,0}
+\definecolor{qiforange}{RGB}{230,126,34}
+\definecolor{lightgray}{RGB}{240,240,240}
+\definecolor{medgray}{RGB}{200,200,200}
+
+\begin{document}
+\begin{tikzpicture}[
+    node distance=0.6cm and 1.2cm,
+    every node/.style={font=\small},
+    block/.style={rectangle, draw, rounded corners=3pt, minimum width=3cm, minimum height=0.7cm, align=center, fill=white},
+    layer/.style={rectangle, draw, rounded corners=5pt, inner sep=12pt, thick},
+    arrow/.style={-{Stealth[length=6pt]}, thick},
+    dasharrow/.style={-{Stealth[length=6pt]}, thick, dashed},
+    label/.style={font=\footnotesize\itshape, text=gray!70!black},
+]
+
+% === ORCHESTRATION LAYER ===
+\node[block, fill=orchblue!15, minimum width=4.5cm] (manager) {\textbf{Manager Rank (Rank 0)}\\SPSA Optimizer: $\theta_k$};
+
+\node[block, fill=orchblue!8, below left=0.8cm and 0.3cm of manager, minimum width=3.2cm] (worker1) {Worker Rank 1\\Pauli subset $\{O_1 \ldots O_{N/P}\}$};
+\node[block, fill=orchblue!8, below right=0.8cm and 0.3cm of manager, minimum width=3.2cm] (worker2) {Worker Rank $P$\\Pauli subset $\{O_{N-N/P} \ldots O_N\}$};
+
+\node[label, below left=0.15cm and -0.5cm of manager] (bcast_label) {\texttt{MPI\_Bcast($\theta$)}};
+
+\draw[arrow] (manager.south west) ++(0.3,0) -- (worker1.north);
+\draw[arrow] (manager.south east) ++(-0.3,0) -- (worker2.north);
+
+\node[draw=none, between=worker1 and worker2, yshift=-0.1cm] (dots) {\Large$\cdots$};
+
+\begin{scope}[on background layer]
+\node[layer, fill=orchblue!5, draw=orchblue, fit=(manager)(worker1)(worker2)(dots)(bcast_label), label={[font=\small\bfseries, text=orchblue]above:Orchestration Layer: MPI Manager-Worker}] (orch_box) {};
+\end{scope}
+
+% === ACCELERATION LAYER ===
+\node[block, fill=accgreen!15, below=1.8cm of worker1, minimum width=3.2cm] (gpu1) {\textbf{GPU Path}\\cuStateVec / CUDA Thrust\\Statevector + Gate Ops};
+\node[block, fill=accgreen!8, below=0.5cm of gpu1, minimum width=3.2cm] (cuda1) {CUDA Pauli Kernel\\FP32 eval $\to$ FP64 reduce};
+\node[block, fill=gray!10, below=0.5cm of cuda1, minimum width=3.2cm] (cpu1) {\textit{CPU Fallback}\\Qiskit Statevector};
+
+\node[block, fill=accgreen!15, below=1.8cm of worker2, minimum width=3.2cm] (gpu2) {\textbf{GPU Path}\\cuStateVec / CUDA Thrust\\Statevector + Gate Ops};
+\node[block, fill=accgreen!8, below=0.5cm of gpu2, minimum width=3.2cm] (cuda2) {CUDA Pauli Kernel\\FP32 eval $\to$ FP64 reduce};
+\node[block, fill=gray!10, below=0.5cm of cuda2, minimum width=3.2cm] (cpu2) {\textit{CPU Fallback}\\Qiskit Statevector};
+
+\draw[arrow] (worker1.south) -- (gpu1.north);
+\draw[arrow] (worker2.south) -- (gpu2.north);
+\draw[dasharrow, gray] (gpu1) -- (cuda1);
+\draw[dasharrow, gray] (cuda1) -- (cpu1);
+\draw[dasharrow, gray] (gpu2) -- (cuda2);
+\draw[dasharrow, gray] (cuda2) -- (cpu2);
+
+\node[label] at ($(gpu1.east)+(0.3,0)$) {Tier 1};
+\node[label] at ($(cuda1.east)+(0.3,0)$) {Tier 2};
+\node[label] at ($(cpu1.east)+(0.3,0)$) {Tier 3};
+
+\begin{scope}[on background layer]
+\node[layer, fill=accgreen!3, draw=accgreen, fit=(gpu1)(cuda1)(cpu1)(gpu2)(cuda2)(cpu2), label={[font=\small\bfseries, text=accgreen!70!black]above:Acceleration Layer: Intra-Process CUDA Execution}] (accel_box) {};
+\end{scope}
+
+% === QUANTUM INTERFACE LAYER ===
+\node[block, fill=qiforange!15, below=1.8cm of cpu1, minimum width=3.2cm] (cpp_disp) {\textbf{C++ Dispatcher}\\MPI coordination\\Local GPU/CPU routing};
+
+\node[block, fill=qiforange!15, below=1.8cm of cpu2, minimum width=3.2cm] (py_est) {\textbf{Python EstimatorV2}\\IBM QPU submission\\T-REx + PUB batching};
+
+\node[block, fill=qiforange!30, below=0.8cm of cpp_disp, minimum width=3.2cm] (sim) {Local Simulator\\(Statevector)};
+
+\node[block, fill=qiforange!40, below=0.8cm of py_est, minimum width=3.2cm, text=white] (qpu) {\textbf{Cloud QPU}\\IBM \texttt{ibm\_marrakesh}};
+
+\draw[arrow] (cpu1.south) -- (cpp_disp.north);
+\draw[arrow] (cpu2.south) -- (py_est.north);
+\draw[arrow] (cpp_disp) -- (sim);
+\draw[arrow] (py_est) -- (qpu);
+\node[label, right=0.1cm of qpu] {Async submit};
+
+% Allreduce aggregation
+\node[block, fill=orchblue!20, below=1.5cm of $(sim.south)!0.5!(qpu.south)$, minimum width=5cm] (allreduce) {\texttt{MPI\_Allreduce(SUM)}\\$E_{total} = \sum E_{rank_i}$};
+
+\draw[arrow] (sim.south) -- ++(0,-0.5) -| (allreduce.north west);
+\draw[arrow] (qpu.south) -- ++(0,-0.5) -| (allreduce.north east);
+
+% Return to manager
+\draw[arrow, orchblue] (allreduce.south) -- ++(0,-0.4) -| ($(orch_box.south)+(0,0)$) node[label, pos=0.3, right] {Update $\theta_{k+1}$};
+
+\begin{scope}[on background layer]
+\node[layer, fill=qiforange!3, draw=qiforange, fit=(cpp_disp)(py_est)(sim)(qpu)(allreduce), label={[font=\small\bfseries, text=qiforange!80!black]above:Quantum Interface Layer: Asynchronous Dispatcher}] (qif_box) {};
+\end{scope}
+
+\end{tikzpicture}
+\end{document}

@@ -189,11 +189,12 @@ The progression that occurs from the simplest molecule $H_2$ (4 qubits, 15 Pauli
 rank) to $N_{2}$ (20 qubits, 2951 Pauli terms) \parencite{kandala2017hardware} stresses each layer of the middleware. This includes stressing the tasks of parameter broadcasting, 
 Pauli term partitioning, statevector construction, and MPI reduction. 
 
+
 \subsubsection{Scaling Strategies}
 The objective of Strong Scaling is to reduce the execution time within a fixed total problem size by increasing the 
-number of processors, while considering the ideal time spent on $N$ cores and efficiency \parencite{amdahl1967validity}. This includes 
-keeping the application scenario of $H_{2}O$, which has 1086 Pauli terms and needs 896 iterations, fixed while increasing the number of MPI ranks ($P \in \{1,2,4,8\}$). This would prove the functionality of parallelism in this stack, as if it is perfectly
-parallel doubling the processors would cut the execution time in two. However, in real life, Amdahl's law is proven as the tasks of statevector construction and the communication overhead from MPI Allreduce will provide diminishing returns as scale increases. 
+number of processors, while considering the ideal time spent on $N$ cores and efficiency \parencite{amdahl1967validity}. This is tested on
+the application scenario of $LiH$ (12 qubits, 631 Pauli terms) fixed while increasing the number of MPI ranks ($P \in \{1,2,4,8\}$). This proves the functionality of parallelism in this stack, as if perfectly
+parallel, then doubling the processors would cut the execution time in two. In practice, Amdahl's law is proven as the tasks of statevector construction and the communication overhead from MPI Allreduce provide diminishing returns as scale increases. 
 Ideal Time is the predicted time if parallelization was perfect (if Amdahl's law is proven incorrect), computed with the formula ($N$= number of ranks \parencite{cuboulderScaling}): 
 \begin{equation}
     \text {Ideal Time } = \frac{(\text{Measured Time at Lowest Core Count})\text{(Lowest Core Count)}}{N}
@@ -217,24 +218,35 @@ Here, the metrics of total wall-clock time (identical to Strong scaling), per-it
 Both scaling experiments were repeated with GPU acceleration so to compare against the CPU-only scaling results. 
 
 \subsubsection{Stress Test Design}
-To ensure an asynchronous dispatcher that can withstand obstacles without crashing and a functioning manager-worker topology, 
-the system will undergo evaluations using a simulated "Failure Mode" that replicates real-world issues: 
+To ensure the asynchronous dispatcher that can withstand common failure modes without crashing, while also maintaining a functioning manager-worker topology, 
+the system underwent evaluations using simulated "Failure Mode" tests that replicates real-world issues: 
     \begin{itemize}
-        \item QPU Latency Spiking: A random variable delay will be inserted (between 0.5--2s) into a subset of the worker-rank network calls, done to simulate increased and unpredictable cloud backend latency from QPU queues. This will test the manager rank's ability to rebalance workloads or to be able to maintain a global synchronization using \texttt{MPI\_Allreduce} without rank timeouts or deadlocks. 
-        \item Network Drop-Out Recovery: During active job submission (simulating a crash mid-run), system is tested by deleting the most recent saved checkpoint to test if the Orchestration Layer can perform a "checkpoint restart", in where the last known global $\theta$ state (the previously saved checkpoint before the deleted one) that is stored in the manager rank is used to resume optimization without a full system crash or requiring a system reboot. Each 5 iterations, the system automatically saves a checkpoint within checkpoints/ to provide the restart points. 
+        \item QPU Latency Spiking: A random variable delay was inserted (between 0.5--2s) into every statvector-evaluation call made by odd-numbered worker-rank calls, simulating increased and unpredictable cloud backend latency from QPU queues. This tested the manager rank's ability to rebalance workloads and to maintain a global synchronization by \texttt{MPI\_Allreduce} without rank timeouts or deadlocks. All iterations were completed successfully with synchronization maintained. 
+        \item Network Drop-Out Recovery: During active job submission (simulating a crash mid-run), the most recent saved checkpoint was deleted to test if the Orchestration Layer can perform a "checkpoint restart", in where the last known global $\theta$ state, stored in the manager rank, was used to resume optimization without a full system crash or requiring a system reboot. The system automatically saved a checkpoint within checkpoints/ every five iterations, retaining the 5 most recent, sucessfully providing the restart points. 
     \end{itemize}
+
 
 \subsection{Benchmarking and Measurement Plan}
 \subsubsection{Baseline Implementations}
 These are the control experiments of this stack, developed in order to verify that triple heterogeneous stack has an 
 optimized performance, measured against two baselines: 
      \begin{itemize}
-         \item Serial Baseline: Execution using the same Qiskit Statevector VQE on a single core CPU, using identical SPSA hyperparameters, the HWE-adaptive ansatz, and the same convergence criteria as the distributed MPI/GPU stack, but without any parallelization or GPUs. This identifies the outcome of the stack's MPI distribution from any VQE differences, providing a fair comparison of the wall-clock times between this nonoptimized industry standard starting point to a parallel, distributed system.
-         \item Single Node GPU Baseline: Execution using Qiskit Aer with a CUDA thrust backend on a single NVIDIA GTX 1650 Mobile GPU ($P=1$) without the MPI distribution. This baseline is done to isolate the speedup contribution from GPU acceleration vs from the MPI orchestration, informing where in our stack that computational speedups are coming from and if the integration of GPUs/MPI is strictly necessary to see improvements in the stack's runtime.
+         \item Serial Baseline: Execution using the same Qiskit Statevector VQE on a single core CPU, using identical SPSA hyperparameters, the HWE-adaptive ansatz, and the same convergence criteria as the distributed MPI/GPU stack, but without any parallelization or GPUs. This identifies the outcome of the stack's MPI distribution from any VQE differences, providing a fair comparison of the wall-clock times between this nonoptimized industry-standard starting point to a parallel, distributed system.
+         \item Single Node GPU Baseline: Execution using Qiskit Aer with a CUDA thrust backend on a single GPU ($P=1$) without MPI distribution. This baseline is done to isolate the speedup contribution from GPU acceleration vs the MPI orchestration, informing where in our stack that computational speedups originate from and if the integration of GPUs/MPI is strictly necessary to see improvements in the stack's runtime.
      \end{itemize}
  
+
+\subsubsection{External Baseline Comparison}
+Beyond the perviosuly determined internal baselines, the wall-clock performance in this stack was benchmarked directly against two other 
+popular single-vendor simulations: PennyLane Lightning-GPU and Qiskit Aer's native distributed statevector MPI mode \texttt{blocking_enable=True}). Both simulators
+represent alternatives to this middleware, alongside implementing distributed statevector simulation rather than this stack's per rank replicated design (\S[Acceleration Layer]). 
+All three paths are run on the same GPU (A100-SXM4-40GB) instance, same seed, and the same ansatz across the six molecule benchmark set, allowing for the isolation 
+of the wall-clock cost of this stacks replicated statevector design vs distributed statvector simualtion. The comparison is reported with a single seeds
+rather than the $n{=}5$ methodology otherwise used in this stack. 
+
+
 \subsubsection{Quantitative Metrics}
-In the development of this stack, there are several metrics established that determine the success of this stack and the thresholds of how to determine
+In the development of this stack, there were several metrics established that determine the success of this stack and the thresholds of 
 a pass/fail for different sections of the stack. The primary metric for determining success is the observed End-to-End Wall-Clock Time ($T_{total}$). 
    \begin{equation}
     T_{\text{total}} = T_{\text{accel}} + T_{\text{comm}} + T_{\text{quant}}
@@ -246,10 +258,10 @@ Where:
     \item $T_{quant}$ = QPU execution time (sampling and measurement).
 \end{itemize}
 
-\noindent If on the simulator path, $T_{quant} = 0$, as there is no QPU use. If the quantity of metric $T_{comm}$ is successfully "masked" by the value of the asynchronous $T_{accel}$ 
-execution time, there will be evidence of this stack's contribution towards practical hybrid computation, ensuring wait times and classical overhead will not undo a QPU speedup, along with the achievement of the targeted 1.5x speedup over standard single process, CPU-based Qiskit workflows.   
+\noindent If on the simulator path, $T_{quant} = 0$, as there is no QPU use. When the quantity of metric $T_{comm}$ is successfully "masked" by the asynchronous $T_{accel}$ 
+execution time, there is evidence of this stack's contribution towards practical hybrid computation, ensuring wait times and classical overhead do not undo a QPU speedup, alongside the achievement of the targeted 1.5x speedup over standard single process, CPU-based Qiskit workflows.   
 
-\noindent Masking Efficiency ($M$) will be used as a metric for how well the QPU RTT is hidden (masked) by the classical workload. 
+\noindent Masking Efficiency ($M$) is used as a metric for how well the QPU RTT is hidden (masked) by the classical workload. 
 \begin{equation}
     M= \frac{T_{\text{accel}}}{T_{\text{comm}}}
 \end{equation}
@@ -277,7 +289,7 @@ Resilience & $R_{time}$ & Recovery Time after Failure & $<$ 60\,s (Auto checkpoi
 \normalsize
 \caption{Quantitative Success Metrics for Middleware Stack Evaluation}
 \label{table:success_metrics}
-\end{table}
+\end{table*}
 
 \subsubsection{Correctness and Convergence}
 For the purpose of ensuring the methods of optimization (such as Mixed Precision (FP32/FP64) and SPSA) do not compromise the chemical accuracy of 

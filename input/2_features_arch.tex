@@ -292,20 +292,24 @@ Resilience & $R_{time}$ & Recovery Time after Failure & $<$ 60\,s (Auto checkpoi
 \end{table*}
 
 \subsubsection{Correctness and Convergence}
-For the purpose of ensuring the methods of optimization (such as Mixed Precision (FP32/FP64) and SPSA) do not compromise the chemical accuracy of 
-results returned by this stack, the tested molecules ground state energy results will be compared against the preestablished 
-FCI results of the exact molecular ground state energies\parencite{szabo1996modernquantumchemistry}. This software stack is considered successful 
-within the application of quantum chemistry if it maintains Chemical Accuracy ($\approx 1.6$ mHa)\parencite{szabo1996modernquantumchemistry} throughout the parallelized iterations. 
+To verfiry the implemented optimization strategies of this stack (GPU-accelerated statevector precision policy, SPSA optimizer) do not compromise chemical accuracy of 
+results, each of the benchmark molecules ground state energy results are compared against the preestablished, exact
+FCI results \parencite{szabo1996modernquantumchemistry}. Chemical Accuracy ($\approx 1.6$ mHa)\parencite{szabo1996modernquantumchemistry} is reported per molecule as a fidelity check, 
+not as the middleware's criteria for a pass/fail. As established in \S[Introduction], the chemical accuracy of HWE ansatz combined with SPSA optimzier is 
+an orthogonal concern to the contribution of this stack as a reusable middleware and is further disucessed in \S[Results] and \S[Limitations]
 
 \subsubsection{Stack Limitations}
-Within this stack, there are a few identified limitations, such as the shared memory within a single Docker host, leaving 8 MPI ranks at $P \geq 4$
-to compete for only 4 physical cores, demonstrating a lower bound, as a true multi-node cluster with Infiniband would provide independent memory. 
-The GTX 1650 Mobile GPU (128 GB/s) is also a lower bound for GPU acceleration, as Bayraktar et al. proved statevector simulation to be memory bandwidth bound, meaning
-the A100 (2039 GB/s) would provide a significantly faster speedup over the results obtained within this stack.
+There are several identified limitations within this stack, starting with the shared memory within a single Docker host, leaving 8 MPI ranks at $P \geq 4$
+to compete for only 4 physical cores, demonstrating a lower bound, as a true multi-node cluster with Infiniband would provide independent memory per rank. 
+GPU acceleration is memory bandwidth bound \parencite{bayraktar2023cuquantum}, where this stacks results are run on a datacenter-grade hardware (A100-SXM4-40GB) but 
+would improve on faster GPU generations (H100s). 
 The STO-3G minimal basis set utilized limits how chemically meaningful the energy estimates will be, however, larger basis sets would drastically increase qubit counts. 
-And, as previously mentioned, HWE ansatzes do not conserve particle numbers and SPSA can push $\theta$ into unphysical Hilbert spaces, causing energies to drop
-below FCI, which is a limitation that can only be fully resolved through UCCSD. Lastly, the single deterministic run using seed=42 means this research is capturing
-only one specific OS scheduling outcome. 
+And, as previously mentioned in \S[Correctness and Convergence], HWE ansatzes do not conserve particle numbers and SPSA can push $\theta$ into unphysical Hilbert spaces, causing energies to drop
+below FCI, which is a limitation that can only be fully resolved through UCCSD (\S[Future Work]). SPSA is applied uniformly on both the noiseless simulator and QPU paths for architectural consistency (\S[Orchestration Layer]), 
+where the noiseless simulator gains nothing from SPSA's noise-robustness, trading the convergence accuracy that an exact-gradient would maintain and contributing to the elevated $LiH$ and $H_{2}O$ errors reported in \S[Results]. 
+The FP32/FP64 automatic precision policy (\S[Acceleration Layer]) has not been been empiracally validated against FP64 reference runs (with same seed and molecule) and the accuracy delta 
+from FP32's reduced precision is not yet measured either. 
+Lastly, the C++ dispatcher local compute routing remains diagnostic only and is unvalidated for checmically accurate energies on the entangled circuits, as further discussed in \S[Acceleration Layer], \S[Future Work]. 
 
 
 % For the preparation of future, broader applications of this software, accuracy is also measured by Relative Error ($\epsilon$) : 

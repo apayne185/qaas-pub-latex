@@ -1,18 +1,25 @@
-\section{Stack Features}
-\label{sec:methodology}
-This proposed triple-heterogeneous software stack follows a high performance middleware design pattern, specifically
+\section{System Architecture and Methods}
+\label{sec:System Architecture and Methods}
+This triple-heterogeneous software stack follows a high performance middleware design pattern,
 focusing its structure on the orchestration of distributed classical resources alongside remote, cloud based quantum backends. The stack 
 addresses the preestablished CPU-QPU bottleneck \parencite{cruise2020practicalquantumcomputingvalue} through the development of an asynchronous and 
-parallelized pipeline that executes the hybrid quantum-classical VQE software to find the ground state energies of \textcite{kandala2017hardware}'s set of molecules $H_2, LiH, BeH_{2}$, extended to $H_{2}O$ 
-with a measurable speedup when compared to the serial, nondistributed Qiskit baseline. 
+parallelized pipeline, designed to be resuable middleware running unchanged across CPU, GPU, QPU backends 
+instead of as a single purpose research script. Validation is conducted by executing the 
+hybrid quantum-classical VQE software to find the ground state energies of the HWE ansatz VQE benchmark molecules from the previous work of 
+\textcite{kandala2017hardware}'s: $H_2, LiH, BeH_{2}$, extended to $H_{2}O$, $NH_{3}$, and $N_{2}$, providing a    
+measurable speedup when compared to the serial, nondistributed Qiskit baseline while remaining competivie against distributed statevector 
+baselines without requiring users to abandon their existing simulator stacks. 
 
 \subsection{Distributed System Architecture}
-This stack follows a modular architecture that is designed to decouple the classical, high performance subroutines of SPSA optimization, Pauli term evaluation, local statevector
-construction, and the distributed MPI coordination from the quantum circuit execution of circuits and the measurement of expectation values to allow for asynchronous execution. 
-There are three distinct layers defined within the architecture: the Orchestration layer, the Acceleration layer, and the Quantum interface layer. This system is designed specifically to handle the varying timescales of different components, including 
+This stack follows a modular architecture, designed to decouple the classical, high performance subroutines of SPSA optimization, Pauli term evaluation, local statevector
+construction, and the distributed MPI coordination from the quantum circuit execution and measurement of expectation values, allowing for the asynchronous execution of each. 
+Three distinct layers are defined within the architecture: the Orchestration layer, the Acceleration layer, and the Quantum interface layer. 
+This decomposition is needed due to each component operating across five orders of magnitude of timescales:
 GPU accelerated classical math (microseconds), MPI internode communication (milliseconds), and the cloud based 
-QPU Round-Trip Time (RTT)(seconds). Through these considerations, this middleware stack moves beyond the previously examined single host, synchronous execution model found in the 
-examples of hybrid middleware like XACC \parencite{mccaskey2018xacc} and the HWE-SPSA-VQE research-based setup of \textcite{kandala2017hardware} that was explored in this paper's Literature Review. 
+QPU Round-Trip Time (RTT)(seconds). Without decoupling, we would face the slowerest layer (QPU RTT) serializing and stalling the 
+classical computation, rather than allowing it to overlap. Compared to full HPC integrated hybrid workflow platforms such as JHPC-Quantum \parencite{shehata2026openqse},
+which instead supports distributed execution while requiring per-target manual configuration (as opposed to this stacks offered automatic 
+hardware detection and single run CPU+GPU+QPU integration). 
 
 \begin{figure*}[htbp]
     \centering
@@ -22,19 +29,18 @@ examples of hybrid middleware like XACC \parencite{mccaskey2018xacc} and the HWE
 \end{figure*}
 
 \subsubsection{Orchestration Layer: Distributed Memory and MPI Manager-Worker Topology}
-This top-level layer implements a manager-worker topology that utilizes Message Passing Interface (MPI) in order 
-to manage MPI ranks (workers). Throughout this process, the manager rank (rank 0) handles the global 
-state of the classical optimizer SPSA, holding the current $\theta$ variational parameter vector, determining the values of $\theta^+$ and $\theta^-$, and distributing the 
+This top-level layer implements a manager-worker topology that utilizes Message Passing Interface (MPI)
+to manage MPI ranks (workers). The manager rank (rank 0) holds the global 
+state of the classical optimizer SPSA, the current $\theta$ variational parameter vector, determining the pertubed values of $\theta^+$ and $\theta^-$, and then distributing the 
 $\theta$ sets across the ranks of available classical workers to enable concurrent gradient 
-estimation. SPSA is a derivative-free optimizer, found well suited to handle the quantum measurement noise found on 
-physical qubits (unlike the gradient based methods of Adam or SGD) \parencite{pellow2021classicoptimizers}. Due to 
-this, SPSA is the recommended choice for VQE (and for our NISQ hardware) due to its ability to handle the physically noisy 
-objective functions. 
+estimation. SPSA is a derivative-free optimizer, found well suited to handle the quantum measurement noise on 
+physical qubits (unlike the gradient based methods of Adam or SGD) \parencite{pellow2021classicoptimizers}, which 
+makes SPSA the optimal choice on NISQ hardware to manage the physical, noisy objective functions. 
     
 By utilizing \texttt{MPI\_Ibcast} in the C++ dispatcher and \texttt{comm.Bcast} and \texttt{comm.Allreduce} in the Python path for non-blocking asynchronous communication between the 
-classical-quantum components, the stack allows ranks to remain active and begin the local computations of the state vector expectation values while still
-waiting for the circuit results from the cloud-based QPU. Once worker ranks receive the expectation values, they 
-execute a \texttt{MPI\_allreduce} aggregation for each rank's partial energy and then to update the global objective function. 
+classical-quantum components, the stack allows ranks to remain active and begin local computation of the statevector expectation values while still
+waiting for the circuit results from the cloud QPU. Once worker ranks receive the expectation values, they 
+execute a \texttt{MPI\_allreduce} aggregation for each rank's partial energy to then update the global objective function. 
 
 \begin{figure*}[htbp]
     \centering
@@ -44,37 +50,47 @@ execute a \texttt{MPI\_allreduce} aggregation for each rank's partial energy and
 \end{figure*}
 
 \subsubsection{Acceleration Layer: Intra-Process CUDA-Kernel Execution}
-This layer follows the findings of \textcite{bayraktar2023cuquantum} and is designed for 
-offloading the computationally heavy $2^n$ state-vector math to each MPI rank's NVIDIA GPU. The stack implements a three
-tiered acceleration strategy, picking the best option between two accelerated processing options and the automatic local fallback in place:
+This layer follows the findings of \textcite{bayraktar2023cuquantum}, with the design
+offloading the computationally heavy $2^n$ state-vector math to each MPI rank's NVIDIA GPU. The stack selects between
+two accelerated processing options, autodectected at runtime: 
 \begin{enumerate}
     \item \textbf{GPU statevector (cuStateVec)}: Best option, used when an NVIDIA GPU is detected. The stack switches to Qiskit Aer's GPU-accelerated statevector simulator backed by NVIDIA's cuStateVec library from the cuQuantum SDK. This accelerates the $O(2^n)$ local statevector construction, which dominates per-iteration cost \parencite{bayraktar2023cuquantum}, along with all gate operations (CNOT, rotations) being executed as GPU matrix multiplications.
-    \item \textbf{CUDA Pauli kernel}: A custom CUDA kernel handles the Pauli term expectation values using a mean-field approximation with one GPU thread per 15-1086 Pauli term, where partial results are then summed in tree reduction in shared memory. This kernel processes the distributed Pauli terms across the MPI ranks.
     \item \textbf{CPU fallback}: When no GPU is available, the stack falls back to Qiskit's CPU-based Python/C++ \texttt{Statevector} class for exact (noiseless) state-vector simulation. 
 \end{enumerate}
 
-The CUDA kernel adopts a Mixed Precision strategy using FP32/FP64 used to balance the stack's need 
-for high computational throughput with the need for numerical accuracy. FP32 (Single Precision) is faster but less
-precise, used to handle the trigonometric computations of \texttt{cosf} and \texttt{sinf} within each Pauli term evaluation (only needing 7 decimal digits of precision), which provides up to 2x faster throughput 
-on the GPU cores. FP64 (Double Precision), the slower but exact option, is used in the tree reduction and global accumulation phases in 
-order to prevent precision loss (rounding errors) that can occur during the MPI \texttt{Allreduce} 
-aggregation. This combination is to maintain chemical accuracy while reducing the memory bandwidth bottleneck recognized by
-\textcite{bayraktar2023cuquantum} within state vector simulation due to reading/writing the statevectors from GPU memory instead of the floating point computation.
+With the GPU path, the stack applies an automatic mixed-precision strategy using FP32/FP64 to balance the stack's need 
+for high computational throughput with the need for numerical accuracy. When solving problems under 20 qubits, both consumer and workstation-grade GPUs 
+use FP32 (Single Precision) statevector representation, exploiting the relatively low FP64:FP32 throughput ratio of these cards to gain a 
+substantial free throughput speedup. Datacenter class GPUs (A100s, H100s) and any problems >= 20 qubits use FP64 (Double Precision), where the throughput 
+asymmetry across the precisions is smaller and preciseness is preferred. This choice is resolved once per problem by \texttt{HardwareProfile.recommend_precision()} but can
+be overriden explicitly by the user (\texttt{VQE_PRECISION=fp32\textbar fp64}). Within this paper, every result reporterd was produced
+through one of these acceleration paths. A third, experimental path exists within the codebase, containing a custom CUDA kernel for Pauli-term expectation value with an 
+independent FP32/FP64 mixed precision split, described futher in \S[Future Work], but is not wihtin the autoselection and does not contribute to any published results.  
+
+% precise, used to handle the trigonometric computations of \texttt{cosf} and \texttt{sinf} within each Pauli term evaluation (only needing 7 decimal digits of precision), which provides up to 2x faster throughput 
+% on the GPU cores. FP64 (Double Precision), the slower but exact option, is used in the tree reduction and global accumulation phases in 
+% order to prevent precision loss (rounding errors) that can occur during the MPI \texttt{Allreduce} 
+% aggregation. This combination is to maintain chemical accuracy while reducing the memory bandwidth bottleneck recognized by
+% \textcite{bayraktar2023cuquantum} within state vector simulation due to reading/writing the statevectors from GPU memory instead of the floating point computation.
 
 \subsubsection{Quantum Interface Layer - Asynchronous Dispatcher}
 This layer is the bottom of the stack, handling the abstraction of how quantum hardware-specific drivers 
 (or simulators) perform computations while allowing the previous layers to function regardless if they 
-are using a local simulator (CPU), local GPU, or a cloud GPU. This setup is extending the core ideas of XACC's accelerator model \parencite{mccaskey2018xacc}.   
-This layer handles job submission to all options of local simulators and cloud based QPU backends, 
-routing to either a GPU kernel or a CPU fallback based on the detected hardware. Two dispatch paths occur:
+are using a local simulator (CPU), local GPU, or a cloud GPU. This setup extends the core ideas of XACC's accelerator model \parencite{mccaskey2018xacc}.   
+Two dispatch paths occur:
 \begin{enumerate}
-    \item \textbf{C++ dispatcher} (\texttt{dispatcher.cpp}): Manages the MPI synchronization with rank 0 using \texttt{MPI\_Ibcast} for $\theta$  parameter distribution and \texttt{MPI\_Allreduce} for the partial energy aggregation from all ranks, later to be broadcasted. Routes computation to either CUDA Pauli kernel (when NVIDIA GPU is available) or to the CPU mean-field fallback path. For the cloud IBM QPU path, \texttt{std::async} is used for nonblocking job submission through a launched REST client on a background thread, ensuring main thread does not block, implementing this stack's latency hiding strategy. (\texttt{qpu\_client.cpp}) handles IBM Quantum's IAM authentication, JSON payload construction, and polling with exponential backoff (starting at 2s, doubling until 30s). While the C++ QPU path was implemented, it was not involved within the reported experiments as it is better qualified for future low-level QPU integrations. 
-    \item \textbf{Python EstimatorV2 path} (\texttt{interface.py}): For IBM Quantum experiments, the stack uses Qiskit's EstimatorV2 primitive, which provides the stack with simpler built-in transpilation, observable layout mapping, and with T-REx measurement error mitigation for NISQ hardware \parencite{cai2023quantumerrormitigation}, instead of the C++ path's REST calls. As SPSA needs both $E(\theta^+)$ and $E(\theta^-)$ gradient estimations per iteration \parencite{pellow2021classicoptimizers}, they get bundled into one job as two Primitive Unified Blocs (PUBs), therefore reducing the number of QPU round-trips by 50\%. During the QPU wait time, all MPI ranks independently compute exact statevector expectation values, providing this path both a noise-free reference estimate and useful classical work that contributes to the masking metric $M$.
+    \item \textbf{C++ dispatcher} (\texttt{dispatcher.cpp}): Manages the MPI synchronization with rank 0 using \texttt{MPI\_Ibcast} for $\theta$  parameter distribution and \texttt{MPI\_Allreduce} for partial energy aggregation from all ranks (later to be broadcasted). Local routes computation (to either CUDA Pauli kernel or to CPU mean-field fallback path) is the same diagnostic-only path previously mentioned in \S Acceleration Layer and does not contribute to the results of this paper. In the seperate, complete cloud IBM QPU path, \texttt{std::async} is used for nonblocking job submission via a launched REST client on a background thread, ensuring main thread does not block, while (\texttt{qpu\_client.cpp}) handles IBM Quantum's IAM authentication, JSON payload construction, and polling with exponential backoff (starting at 2s, doubling until 30s). While this path is fully implemented, it was not used within reported experiments either, in favor of the Python EstimatorV2 path, remaining instead as a candidate route for future, low-level QPU integration work. 
+    \item \textbf{Python EstimatorV2 path} (\texttt{interface.py}): For IBM Quantum experiments, the stack uses Qiskit's EstimatorV2 primitive, providing the stack with built-in transpilation, observable layout mapping, and with T-REx measurement error mitigation for NISQ hardware \parencite{cai2023quantumerrormitigation}. As SPSA requires both $E(\theta^+)$ and $E(\theta^-)$ gradient estimations per iteration \parencite{pellow2021classicoptimizers}, these get bundled into a single job as two Primitive Unified Blocs (PUBs), therefore halving the number of QPU round-trips. During the QPU wait time, all MPI ranks independently compute exact statevector expectation values, providing both noise-free reference estimate and useful classical work that contributes to the masking metric $M$.
 \end{enumerate}
 
-This dual path design allows the stack to determine and then utilize the most appropriate interface for each backend, 
-choosing either the high level Python path for cloud QPU access (with its built-in error mitigation strategy), or the 
-low level C++ dispatcher to better handle high-throughput local computation with GPU acceleration.
+Every reported result within this paper utilzies the Python EstimatorV2 path for QPU access and the GPU statevector/CPU fallback paths
+(as described within \S Acceleration Layer for local computation). The C++ dispatcher path remainds as a documented, implemented alternative, 
+with its QPU submission path production-ready and only left unused by choice, while the local compute routing would require the physics fix described 
+in \S Future work before being trusted for published results. 
+
+% SMART TO KEEP MENTIONING THIS ROUTE NOT WORKING? SHOULD I LIMIT IT TO FUTURE WORK INSTEAD, AS I FEEL IT DISCREDITS THE FUNCTIONALITY OF MY STACK TOO EARLY ON? 
+
+
 
 \subsection{Algorithmic Workflow: Parallelized VQE}
 The VQE algorithm is reformulated in this stack from \textcite{peruzzo2014variational}'s single host VQE, in order to exploit its distributed nature, 
@@ -156,6 +172,7 @@ H\textsubscript{2} & 2  & 4  & 15   & $-1.1373$ \\ \hline
 LiH & 4  & 12 & 631  & $-7.8825$ \\ \hline
 BeH\textsubscript{2}  & 6  & 14 & 666  & $-15.5951$ \\ \hline
 H\textsubscript{2}O & 8  & 14 & 1086 & $-75.0124$ \\ \hline
+NH
 \end{tabular}   
 \caption{4 benchmark molecules with STO-3G basis, FCI energies sourced from PySCF Full Configuration Interaction solver.}
 \label{table:molecules}
@@ -265,7 +282,7 @@ within the application of quantum chemistry if it maintains Chemical Accuracy ($
 Within this stack, there are a few identified limitations, such as the shared memory within a single Docker host, leaving 8 MPI ranks at $P \geq 4$
 to compete for only 4 physical cores, demonstrating a lower bound, as a true multi-node cluster with Infiniband would provide independent memory. 
 The GTX 1650 Mobile GPU (128 GB/s) is also a lower bound for GPU acceleration, as Bayraktar et al. proved statevector simulation to be memory bandwidth bound, meaning
-the A100 (2039 GB/s) would provide a significantly faster speedup over the results obtained in this thesis.
+the A100 (2039 GB/s) would provide a significantly faster speedup over the results obtained within this stack.
 The STO-3G minimal basis set utilized limits how chemically meaningful the energy estimates will be, however, larger basis sets would drastically increase qubit counts. 
 And, as previously mentioned, HWE ansatzes do not conserve particle numbers and SPSA can push $\theta$ into unphysical Hilbert spaces, causing energies to drop
 below FCI, which is a limitation that can only be fully resolved through UCCSD. Lastly, the single deterministic run using seed=42 means this research is capturing

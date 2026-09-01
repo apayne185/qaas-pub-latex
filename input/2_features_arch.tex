@@ -153,19 +153,19 @@ portability was validated across the hardware ladder during the stack developmen
 
 
 \subsubsection{Application Scenarios}
-To demonstrate the effectiveness of this middleware when tasked a scientifically meaningful workload, this project focuses on testing various real-world applications in
-quantum chemistry and computing the molecular electronic ground-state energies of four increasingly complex molecules over the iterations of the VQE. Chemistry was selected to be the  
+To demonstrate the effectiveness of this middleware when tasked a scientifically meaningful workload, this paper focuses on testing 
+quantum chemistry, specifically the computation of the molecular electronic ground-state energies of six increasingly complex molecules over the iterations of the VQE. Chemistry was selected to be the  
 application for this middleware due to three main reasons: 
     \begin{enumerate}
-        \item Molecular Hamiltonians (mathematical description of electron interactions) map naturally to a qubit operator ($X$,$Y$,$Z$,$I$) through the Jordan-Wigner transformation \parencite{peruzzo2014variational}, which produces a clearly defined set of Pauli terms (ranging from 15 for $H_2$ to 1086 for $H_{2}O$) to then be batched and distributed across MPI ranks (while still not exceeding the coherency limitations of modern day QPUs). If this stack chose to operate beyond chemistry into fields such as finance or logistics, the decomposition into distributed subsets is not as simple. 
-        \item The problem size scales predictably with the number of electrons and basis functions to allow for controlled experiments (ranging from 4-14 qubits as the benchmark scales from $H_2 - H_{2}O$). This allows testing the stack with Strong/Weak scaling analyses.  
-        \item Lastly, it was selected due to the preexisting Full Configuration Interaction (FCI) energies which provides a comparison to a verified, exact ground-truth references for each molecule (each molecule's $E_0$) \parencite{szabo1996modernquantumchemistry}, in order to understand the stack's ability to maintain an approximate chemical accuracy while prioritizing a computational speedup. 
+        \item Molecular Hamiltonians (mathematical description of electron interactions) map naturally to a qubit operator ($X$,$Y$,$Z$,$I$) through the Jordan-Wigner transformation \parencite{peruzzo2014variational}, which produces a clearly defined set of Pauli terms (ranging from 15 for $H_2$ to 3057 for $NH_{3}$) to then be batched and distributed across MPI ranks (while still not exceeding the coherency limitations of modern day QPUs). If this stack extended to operate beyond chemistry into fields such as finance or logistics, the decomposition into distributed subsets is not as straightforward. 
+        \item Problem size scales predictably with the number of electrons and basis functions to allow for controlled experiments (ranging from 4-20 qubits as the benchmark scales from $H_2 - N_2$). This allows testing the stack with Strong/Weak scaling analyses.  
+        \item Preexisting Full Configuration Interaction (FCI) energies provides a comparison to a verified, exact ground-truth references for each molecule's $E_0$ \parencite{szabo1996modernquantumchemistry}, in order to evaluate the stack's ability to maintain an approximate chemical accuracy while prioritizing a computational speedup. 
     \end{enumerate}
 
-From the STO-3G minimal basis set (which provides the qubit counts representing each molecule's orbitals) \parencite{szabo1996modernquantumchemistry} 
-combined with FCI ground truths for validation, as production basis sets (6-31G, cc-pVDZ) increase qubit counts significantly. However, the 
-middleware distribution is basis-set agnostic, as larger basis sets would provide a larger quantity of distributable work for MPI. 
-Four molecules of increasing complexity are selected to be benchmark targets, progressively providing sufficiently complex Hilbert space that can test the 
+All molecules use the STO-3G minimal basis set \parencite{szabo1996modernquantumchemistry} 
+combined with FCI ground truths for validation, as production basis sets (6-31G, cc-pVDZ) would increase qubit counts significantly. However the 
+middleware distribution strategy is basis-set agnostic, as larger basis sets would provide a larger quantity of distributable work for MPI. 
+Siz molecules of increasing complexity are selected to be benchmark targets, progressively providing sufficiently complex Hilbert space that can test the 
 efficiency of the MPI/CUDA distribution while still using a manageable size of molecules not exceeding the coherency limitations of modern day QPUs. 
 
 \begin{table*}[htbp]
@@ -178,15 +178,15 @@ H\textsubscript{2} & 2  & 4  & 15   & $-1.1373$ \\ \hline
 LiH & 4  & 12 & 631  & $-7.8825$ \\ \hline
 BeH\textsubscript{2}  & 6  & 14 & 666  & $-15.5951$ \\ \hline
 H\textsubscript{2}O & 8  & 14 & 1086 & $-75.0124$ \\ \hline
-NH\textsubscript{3} & 
-N\textsubscript{2} & 
+NH\textsubscript{3} & 10 & 16 & 3057 & $-55.5183$ \\ \hline
+N\textsubscript{2} &14 & 20 & 2951 & $-107.6482$ \\ \hline
 \end{tabular}   
 \caption{4 benchmark molecules with STO-3G basis, FCI energies sourced from PySCF Full Configuration Interaction solver.}
 \label{table:molecules}
 \end{table*}   
 
 The progression that occurs from the simplest molecule $H_2$ (4 qubits, 15 Pauli terms, fits within the memory of a single MPI 
-rank) to $H_{2}O$ (14 qubits, 1086 Pauli terms) \parencite{kandala2017hardware} stresses each layer of the middleware. This includes stressing the tasks of parameter broadcasting, 
+rank) to $N_{2}$ (20 qubits, 2951 Pauli terms) \parencite{kandala2017hardware} stresses each layer of the middleware. This includes stressing the tasks of parameter broadcasting, 
 Pauli term partitioning, statevector construction, and MPI reduction. 
 
 \subsubsection{Scaling Strategies}

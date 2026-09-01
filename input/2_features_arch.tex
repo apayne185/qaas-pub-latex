@@ -37,9 +37,10 @@ estimation. SPSA is a derivative-free optimizer, found well suited to handle the
 physical qubits (unlike the gradient based methods of Adam or SGD) \parencite{pellow2021classicoptimizers}, which 
 makes SPSA the optimal choice on NISQ hardware to manage the physical, noisy objective functions. 
     
-By utilizing \texttt{MPI\_Ibcast} in the C++ dispatcher and \texttt{comm.Bcast} and \texttt{comm.Allreduce} in the Python path for non-blocking asynchronous communication between the 
-classical-quantum components, the stack allows ranks to remain active and begin local computation of the statevector expectation values while still
-waiting for the circuit results from the cloud QPU. Once worker ranks receive the expectation values, they 
+By utilizing \texttt{MPI\_Ibcast} in the C++ dispatcher and \texttt{comm.Bcast} and \texttt{comm.Allreduce} in the Python path for the same role, the stack enables communication between the 
+classical-quantum components. Within the Python path, the overlp between QPU wait times and classical compuation is achieved, not through non-blocking MPI primitives but instead by code restructuring: 
+QPU jobs are submitted and its result deferred while ranks proceed with the local statevector work, with the only blocking
+occurs on \texttt{job.result()} once local work is completed. Once worker ranks receive the expectation values, they 
 execute a \texttt{MPI\_allreduce} aggregation for each rank's partial energy to then update the global objective function. 
 
 \begin{figure*}[htbp]
@@ -92,33 +93,42 @@ in \S Future work before being trusted for published results.
 
 
 
+
 \subsection{Algorithmic Workflow: Parallelized VQE}
 The VQE algorithm is reformulated in this stack from \textcite{peruzzo2014variational}'s single host VQE, in order to exploit its distributed nature, 
 following an iterative cycle of: 
     \begin{enumerate}
         \item \textbf{Global Parameter Broadcast}: The optimizer rank broadcasts a vector of parameters ($\theta$) to $P$ parallel ranks.
-        \item \textbf{Parallel Expectation Value Estimation}: Each rank ($p \in P$) computes the subset of the Pauli string expectation values: $$\langle\psi(\theta)|\hat{O}_i|\psi(\theta)\rangle$$. This is the stack's primary point of SIMD parallelization \parencite{bayraktar2023cuquantum}, $O_i$ terms are distributed across MPI ranks.
+        \item \textbf{Parallel Expectation Value Estimation}: Each rank ($p \in P$) computes its assigned subset of the Pauli string expectation values: $$\langle\psi(\theta)|\hat{O}_i|\psi(\theta)\rangle$$, with $O_i$ terms partitioned across the MPI ranks. This is the stack's primary point of task parallelization, with the distribution of independent Pauli-term evaluations instead of relying on a single global reduction \parencite{bayraktar2023cuquantum}.
         \item \textbf{Asynchronous Handshake}: When using the cloud QPU backend, circuits queue on the remote processor while the classical MPI ranks will independently compute the exact statevector expectation values locally. This overlap provides both noise-free reference estimate and classical work that masks the QPU round-trip latencies.
         \item \textbf{Reduction and Updating}: Partial expectation values from all ranks get aggregated using \texttt{MPI\_Allreduce} into a single energy sum, which the classical gradient-free optimizer SPSA \parencite{pellow2021classicoptimizers} uses (alongside the perturbed $E(\theta^+)$ and $E(\theta^-)$) to compute the next $\theta$ for the following iteration.
     \end{enumerate}
 
+
 \subsection{Performance Evaluation and Experimental Design}
-This section describes the full evaluation of this middleware stack, providing validation through a Strong Scaling analysis where the  
-stack's performance when total problem size is kept fixed while the number of cores is increased is measured to determine points of speedup \parencite{cuboulderScaling} . This method of 
-analysis is crucial to reducing execution time with the system and to exploit the full potential of parallelizing the workload. This measurement is governed by Amdahl's Law \parencite{amdahl1967validity}, 
-to calculate the maximum (theoretical) speedup of a parallel system, establishing the threshold where adding processors will provide diminishing returns instead of computational speedups. 
-A Weak Scaling analysis is also implemented to test the middleware's communication overhead to determine if it grows sublinearly as the system scales, evaluating solving larger problems within a consistent 
-time-to-solution, as determined in the work of \textcite{gustafson1988reevaluating}. Both analyses will be conducted to test the ability of this middleware to scale both in 
-its parallelization efficiency and when handling larger molecular workloads. 
+This section describes the full evaluation of this middleware stack validated through a Strong Scaling analysis, where the
+total problem size is kept fixed at LiH (12 qubits) while the number of cores increases, in order to determine points of speedup \parencite{cuboulderScaling}. This method of
+analysis is crucial to determing how to exploit the full potential of parallelizing the workload and at what point additional processors are no longer beneficial.
+This measurement is governed by Amdahl's Law \parencite{amdahl1967validity},
+to calculate the maximum (theoretical) speedup of a parallel system, establishing the threshold where adding processors will yield diminishing returns.
+A Weak Scaling analysis was also implemented, with the molecular complexity grows proportionally with the number of ranks from $H_2$ at $P{=}1$ to $H_{2}O$ at $P{=}8$ (aiming for roughly constant Pauli term counts per rank), testing if the per-iteration wall-clock time
+remains stable while the workload scales, as established in the work of \textcite{gustafson1988reevaluating}.
+Both analyses were conducted to test the ability of the stack's GPU-accelerated path to scale both in 
+its parallelization efficiency and its ability in handling increasingly larger, more complex molecular workloads. 
+
 
 \subsubsection{Experimental Configuration}  
-All simulator experiments of this stack were conducted inside a Docker container (CUDA toolkit 12.6.3, Qiskit 2.1+, qiskit-ibm-runtime 0.45.1, Python 3.11, PySCF 2.4+, OpenMPI from Ubuntu 22.04 system package) 
-on a single host machine (a standard laptop setup, reflecting modern day hybrid quantum communication) Intel Core i7-1065G7 (Ice Lake, with 4 physical cores, 8 logical threads) clocked at 1.30 GHz base, 3.90 GHz turbo with 32 GB RAM, 
-running on a Linux Mint OS. This configuration is set to ensure reproducibility across computing devices, along with proving the viability and portability of efficient hybrid computation on a commodity hardware device. 
-Wall-clock times come from single deterministic runs with a fixed seed, so reported times are influenced by the variation in OS-level scheduling and represent typical performance rather than averaged measurement. 
+All simulator experiments of this stack were conducted inside a Docker container (CUDA toolkit 12.6.3, Qiskit $\geq$2.5.2, qiskit-ibm-runtime $\geq$0.49.0, Python 3.11, PySCF $\geq$2.14.0, OpenMPI from Ubuntu 22.04 system package) on a NVIDIA A100-SXM4-40GB (Lamdba Cloud), the primary validated hardware target of the stack.
+% on a single host machine (a standard laptop setup, reflecting modern day hybrid quantum communication) Intel Core i7-1065G7 (Ice Lake, with 4 physical cores, 8 logical threads) clocked at 1.30 GHz base, 3.90 GHz turbo with 32 GB RAM,running on a Linux Mint OS. 
+This configuration is set to ensure reproducibility across computing devices, demonstrating its portability and capacity to scale from commodity hardware up to datacenter-class GPUs. The same containerzied
+Docker environment is reproducible on any host, regardless of the GPU utilzied. Wall-clock times are aggregated across $n=5$ independent random SPSA seeds ($n=10$ for LiH due to its bimodal convergence behavior),
+reported as the median of the seeds with [min, max] range, using \texttt{benchmarks/aggregate_seeds.py} .
 
-This middleware utilizes VQE configured with a HWE ansatz to ensure rapid computations on shallow circuits along with the classical optimizer SPSA, 
-effective for navigating quantum noise found on our NISQ devices, following \textcite{kandala2017hardware}'s setup with an expansion to dispatching to a GPU accelerated process for an enhanced computational speedup.  
+This middleware utilizes the VQE algorithm configured with tiered system that selects an ansatz based on a correlation score metric, computed
+from each introduced molecules Pauli-term structure. All 6 benchmark molecules ($H_{2}O$, $LiH$, $BeH_{2}$, $H_{2}O$, $NH_{3}$, $N_{2}$) all fall within the \texttt{hwe_adaptive}
+tier as the correlation scores fall between 0.34-0.50, where notably, none reach the 0.55 threshold that would then trigger the particle conserving UCCSD tier (despite the six-fold range within the set in qubit 
+counts and Pauli-term complexity). The Shallow, HWE (hardware-efficient) ansatz ensures rapid computations on shallow circuits along with the classical optimizer SPSA, 
+effective for navigating quantum noise found on NISQ devices, following \textcite{kandala2017hardware}'s setup with an expansion to dispatching to a GPU accelerated dispatch for an enhanced computational speedup.  
 SPSA has a set fixed perturbation size $c = 0.1$ that can appropriately handle variational 
 angles within $[0,2\pi]$ with a step size of $a=0.628 / \sqrt{p/8}$, which scales inversely with the square root of the 
 number of variational parameters. The stability constant, $A = 0.1 \times \text{max\_iterations}$ delays any aggressively early 
@@ -131,20 +141,16 @@ within that window (as $\tau = 1.6$ mHa, the chemical accuracy threshold defined
 is applied to prevent false convergences from occurring on the small, early steps. A maximum iteration count scales alongside 
 the number of parameters with $\max(200, 8p)$. For reproducibility, all experiments use a fixed random seed of 42. 
 
-The ansatz configuration that is implemented within the stack is a tiered ansatz system that selects based on a correlation 
-score metric. All four of the benchmark molecules fall within the tier of \texttt{hwe\_adaptive} (within correlation scores 0.34--0.50), 
-using the EfficientSU2 circuit with full entanglement and $\min(\text{reps}+1, 3)$ number of repetition layers. The variational 
-parameters use a uniform distribution during initialization ($\mathcal{U}(-0.1, 0.1)$), in order to keep the initial HWE 
-state close to the Hartree-Fock reference $|0\ldots0\rangle$ under the Jordan-Wigner mapping to delay the occurrence of particle number violations.  
-
 All quantum backend experiments utilize IBM Quantum’s open access plan, which provides free access to the 156 qubit \texttt{ibm\_marrakesh} production-scale processor without a financial barrier for research. IBM Quantum was selected as this stack's cloud QPU provider due 
 to their Qiskit library providing the means for effective hybrid middleware integration, offering the EstimatorV2 primitive with built-in source code language conversion and error mitigation \parencite{rallis2025interfacingquantumcomputingsystems}.  
-In this stack, the Qiskit IBM Runtime EstimatorV2 primitive is configured with 4096 shots per circuit and with a resilience level 1 (T-REx measurement error mitigation) in order to balance the precision $1/\sqrt{4096} \approx 0.016\;E_h$ per expectation value while operating within the time limits of the IBM open access plan. 
-The GPU-accelerated experiments are conducted on an NVIDIA GeForce GTX 1650 Mobile (Turing architecture, 4 GB GDDR6, CUDA 12.6), 
-using both the Qiskit Aer CUDA thrust backend and the NVIDIA cuStateVec backend to accelerate the construction of the state vector and the local GPU gate operations. This consumer-grade GPU represents an accessible, lower bound 
-in the range of performance-accelerator GPUs, whereas the less user accessible A100s (the GPU of choice benchmarked by \textcite{bayraktar2023cuquantum}), if used 
-would provide substantially improved speedups due to their higher memory bandwidth. However, this project largely relies on obtainable, cost-friendly resources, selecting the remote IBM Quantum open access plan and Lambda's NVIDIA GeForce GTX 1650 Mobile GPUs in order to develop and test this middleware. In future work, this project
-will extend to computationally superior resources. 
+In this stack, the Qiskit IBM Runtime EstimatorV2 primitive is configured with 4096 shots per circuit and with a resilience level 1 (T-REx measurement error mitigation) in order to balance the precision $1/\sqrt{4096} \approx 0.016\;E_h$ per expectation value while 
+operating within the time limits of the IBM open access plan. 
+The GPU-accelerated experiments are conducted on an NVIDIA A100-SXM4-40GB (Lambda Cloud),
+using both the Qiskit Aer CUDA thrust backend and the NVIDIA cuStateVec backend to accelerate the construction of the state vector and the local GPU gate operations. This datacenter-grade GPU provides high memory bandwidth (1,555 GB/s) as the primary driver to the measured strong-scaling results
+(\S[Results]) as the statevector simulation is memory bandwidth bound \parencite{bayraktar2023cuquantum}. The auto-detecion layer (\texttt{HardwareProfile}) allows for the same codebase to run unchanged on lower tier consumer 
+and workstation GPUs, with an automatic adjustment of the precision policy (\S[Acceleration Layer]). While A100s are the sole GPU class reported within this paper, this 
+portability was validated across the hardware ladder during the stack development. 
+
 
 \subsubsection{Application Scenarios}
 To demonstrate the effectiveness of this middleware when tasked a scientifically meaningful workload, this project focuses on testing various real-world applications in
@@ -172,7 +178,8 @@ H\textsubscript{2} & 2  & 4  & 15   & $-1.1373$ \\ \hline
 LiH & 4  & 12 & 631  & $-7.8825$ \\ \hline
 BeH\textsubscript{2}  & 6  & 14 & 666  & $-15.5951$ \\ \hline
 H\textsubscript{2}O & 8  & 14 & 1086 & $-75.0124$ \\ \hline
-NH
+NH\textsubscript{3} & 
+N\textsubscript{2} & 
 \end{tabular}   
 \caption{4 benchmark molecules with STO-3G basis, FCI energies sourced from PySCF Full Configuration Interaction solver.}
 \label{table:molecules}

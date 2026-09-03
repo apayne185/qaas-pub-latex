@@ -36,16 +36,23 @@ In this experiment, each benchmark molecule from Table \ref{table:molecules} was
 % Note that the serial baseline may converge at a different iteration count than the distributed stack, as the convergence criterion can trigger earlier/later depending on the SPSA trajectory in each execution path, caused by the floating point errors that occur 
 % in \texttt{MPI\_Allreduce} reduction. 
 
+The serial baseline is constructed with guaranteed identical ansatzs, Hamiltonians, and paramter counts across all benchmark molecules. The baseline is built with the \texttt{ChemistryProblem} object, routing 
+it thorugh the identical \texttt{MoleculeResolver} and ansatz construction code path, ensuring no drifts exist in a seperate re-implementation. The VQE algorithm was executed within 
+a single Python process without MPI ($P=1$), providing the $T_{\text{serial}}$ value. The two paths differ within the formula determining the minimum iterations before convergence check, with the
+serbaial baseline using $\max(20, n_{\text{params}}/2)$ compared to $\max(10, \min(2n_{\text{params}}, 50))$ for the distributed stack, meaning the serial baseline vs distributed may converge in a different iteration
+count, independent of a wall-clock time effect. Additionally, the paths could differ due to small floating point differences in the SPSA trajectory, as the convergence criterion could trigger at a different iteration 
+within the distributed path due to its per-rank Pauli term summation by \texttt{MPI_Allreduce} (which does
+not sum in the same order as the single process summation in the serial path). 
+
 
 \subsection{Experiment 2: Scaling Analyses}
 The objective of this experiment is primarily to measure both Strong Scaling and Weak Scaling analyses across  $P \in \{1,2,4,8\}$ MPI ranks. 
 Both scaling analysis are repeated with GPU acceleration within Experiment 4.
 
-All four benchmark molecules (Table~\ref{table:molecules}) were run at full iteration counts for each rank 
+$LiH$ (12 qubits, 631 Pauli terms) was selected in Strong Scaling for a fixed problem size, run at each rank 
 count $P \in \{1,2,4,8\}$ (as powers of 2 is standard for scaling studies, providing straightforward mapping to binary tree reduction), all within one Docker container on a single host. 
 Each configuration was executed once, as the deterministic statevector simulator with the fixed 
-random seed ($\texttt{seed}=42$) eliminates any variance between runs. $H_{2}O$ (14 qubits, 1086 Pauli terms, 896 iterations) was selected as the main 
-efficiency benchmark due to having the largest number of distributable Pauli terms. For each run, the total 
+random seed ($\texttt{seed}=42$) eliminates any variance between runs. For each run, the total 
 wall-clock time, the per-iteration time, and MPI communication time get recorded and parallel efficiency then computed as:
 \begin{equation}
     E(P) = \frac{T_1}{P \times T_P}
@@ -53,7 +60,7 @@ wall-clock time, the per-iteration time, and MPI communication time get recorded
 where $T_1$ is the determined wall-clock time at $P= 1$.
 
 \subsubsection{Weak Scaling}
-At each rank count, a molecule is selected so that the per-rank workload (the Pauli terms/rank) scales together, as stated within Section~\ref{sec:methodology}.   
+At each rank count, a molecule is selected so that the per-rank workload (the Pauli terms/rank) scales together, as stated within Section~\ref{sec:System Architecture and Methods}.   
 Each molecular configuration is run 10 iterations, with all other configuration parameters remaining identical to those used 
 in Experiment 1. This scaling strategy uses 10 iterations instead of full runs as this provides sufficient runs to measure the per-iteration timing. 
 In this experiment, the stack's total wall-clock time, per-iteration time, per-iteration MPI communication time, and the median masking metric $M$ were recorded. 

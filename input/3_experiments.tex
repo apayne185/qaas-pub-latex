@@ -1,8 +1,13 @@
 \section{Experiments}
-This section provides the experimental procedures for each layer of the stack. With the goal of reproducibility and comparison, all experiments used a SPSA fixed random seed ($\texttt{seed}=42$), ensuring no variance between runs. 
+This section provides the experimental procedures for each layer of the stack. The experiments requiring statistical accuracy comparisons (Experiment 1) use $n=5$ (42-46) independent 
+SPSA seeds, extended to $n=10$ (42-51) seeds for the molecule $LiH$ so to capture the results of the bimodal convergence behavior, reported as median with a [min, max] range. Experiments
+to measure the wall-clock time (Experiments 2, 4) used the fixed single seed $\texttt{seed}=42$, as on the deterministic and noiseless statevector simulation, timing has no statistical variance from seed to seed, 
+rendering it unncessary to run multiple seeds. The experiment testing the IBM QPU API (Experiment 3), also reports a single run under the constraints for the 10 min/month budget of the IBM Quantum Open 
+access plan. The checkpoint and stress-test experiments (5,6) were designed to validate mechanism correctness rather than statistical convergence, therefore seed choice does not apply to their pass/fail status. 
+
 Considering the variational principle, which guarantees $E_{VQE} \geq E_{FCI}$, results are reported as the "best physical energy", the lowest energy observed during 
 the optimization remaining at or above the FCI. This addresses the HWE ansatz's limitation, as it does not conserve particle number, leading SPSA to push $\theta$
-into exploring unphysical Hilbert space sectors (as discussed in Section~\ref{sec:hwe_limitation}, \parencite{kandala2017hardware}).
+into exploring unphysical Hilbert space sectors (as discussed by \parencite{kandala2017hardware}).
 
 \subsection{Experiment 1: Distributed Statevector VQE (Simulator)}
 This is the primary validation experiment of this stack, with the goal being to validate the distributed statevector evaluation path to return 
@@ -15,7 +20,7 @@ In this experiment, each benchmark molecule from Table \ref{table:molecules} was
     \item \textbf{Ansatz}: HWE-adaptive ansatz (EfficientSU2, full entanglement, auto selected reps). 
     \item \textbf{MPI ranks}: $P = 2$, the minimum rank count required to enable Pauli term distribution.
     \item \textbf{Optimizer}: SPSA with dimension scaled step size  ($a= 0.628 / \sqrt{n_{\text{params}} / 8}$). 
-    \item \textbf{Seed}:42, remains fixed across all experiments to allow for reproducibility.
+    \item \textbf{Seed}: $n=5$ (42-46) independent seeds, extended to $n=10$ (42-51) for $LiH$. Results were reported as median with [min,max] range. 
     \item \textbf{Max iterations}: $\max(200,\; n_{\text{params}} \times 8)$, scaling with problem dimension. 
     \item \textbf{Convergence}: Energy spread over the last 10 iterations $< 1.6 \times 10^{-3}$  Ha.         
     \item \textbf{Initialization}: Parameters drawn from $\mathcal{U}(-0.1, 0.1)$, keeps the initial state near the Hartree-Fock reference $|0\ldots0\rangle$. 
@@ -26,10 +31,11 @@ In this experiment, each benchmark molecule from Table \ref{table:molecules} was
 % After evaluation is completed, a global \texttt{MPI\_Allreduce(SUM)} combines the partial energies from each rank. Lastly, the masking metric $M = T_{\text{accel}} / T_{\text{comm}}$  
 % gets recorded one time per iteration.
 
-A control experiment using an identical SPSA parameters with slightly differing in HWE ansatz reps calculation and convergence criteria within execution paths, leading to a difference of 72 vs. 96 parameters for $LiH$, making the serial baseline marginally faster than LiH (therefore, the reported speedup is conservative). 
-This VQE was executed within a single Python process without using MPI ($P=1$), done to provide the $T_{\text{serial}}$ value. 
-Note that the serial baseline may converge at a different iteration count than the distributed stack, as the convergence criterion can trigger earlier/later depending on the SPSA trajectory in each execution path, caused by the floating point errors that occur 
-in \texttt{MPI\_Allreduce} reduction. 
+% A control experiment using an identical SPSA parameters with slightly differing in HWE ansatz reps calculation and convergence criteria within execution paths, leading to a difference of 72 vs. 96 parameters for $LiH$, making the serial baseline marginally faster than LiH (therefore, the reported speedup is conservative). 
+% This VQE was executed within a single Python process without using MPI ($P=1$), done to provide the $T_{\text{serial}}$ value. 
+% Note that the serial baseline may converge at a different iteration count than the distributed stack, as the convergence criterion can trigger earlier/later depending on the SPSA trajectory in each execution path, caused by the floating point errors that occur 
+% in \texttt{MPI\_Allreduce} reduction. 
+
 
 \subsection{Experiment 2: Scaling Analyses}
 The objective of this experiment is primarily to measure both Strong Scaling and Weak Scaling analyses across  $P \in \{1,2,4,8\}$ MPI ranks. 

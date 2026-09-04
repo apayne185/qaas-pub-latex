@@ -36,15 +36,18 @@ In this experiment, each benchmark molecule from Table \ref{table:molecules} was
 % Note that the serial baseline may converge at a different iteration count than the distributed stack, as the convergence criterion can trigger earlier/later depending on the SPSA trajectory in each execution path, caused by the floating point errors that occur 
 % in \texttt{MPI\_Allreduce} reduction. 
 
-The serial baseline is constructed with guaranteed identical ansatzs, Hamiltonians, and paramter counts across all benchmark molecules. The baseline is built with the \texttt{ChemistryProblem} object, routing 
+Both paths, the serial baseline and distributed, are constructed with guaranteed identical ansätze, Hamiltonians, paramter counts, and a minimum iterations before convergence check formula ($\max(10, \min(2n_{\text{params}}, 50))$) across all benchmark molecules
+so to ensure no methodological differences arise between them. The baseline is built with the \texttt{ChemistryProblem} object, routing 
 it thorugh the identical \texttt{MoleculeResolver} and ansatz construction code path, ensuring no drifts exist in a seperate re-implementation. The VQE algorithm was executed within 
-a single Python process without MPI ($P=1$), providing the $T_{\text{serial}}$ value. The two paths differ within the formula determining the minimum iterations before convergence check, with the
-serbaial baseline using $\max(20, n_{\text{params}}/2)$ compared to $\max(10, \min(2n_{\text{params}}, 50))$ for the distributed stack, meaning the serial baseline vs distributed may converge in a different iteration
-count, independent of a wall-clock time effect. Additionally, the paths could differ due to small floating point differences in the SPSA trajectory, as the convergence criterion could trigger at a different iteration 
+a single Python process without MPI ($P=1$), providing the $T_{\text{serial}}$ value. The two paths may still 
+differ due to small floating point differences in the SPSA trajectory, as the convergence criterion could trigger at a different iteration 
 within the distributed path due to its per-rank Pauli term summation by \texttt{MPI_Allreduce} (which does
-not sum in the same order as the single process summation in the serial path). 
+not sum in the same order as the single process summation in the serial path). It should also be noted that the serial baseline for $N_2$
+was not completed as the projected wall-clock time on a single CPU core exceeded 10 hours, so the serial vs distributed comparison is reported with 5/6 of the 
+benchmark molecules. $N_2$'s distributed wall clock time is still reported but without a serial baseline for comparison. 
 
 
+% ONCE TASK D - CURRENTLY RUNNING - LANDS, THIS WILL MODIFY HEAVILY
 \subsection{Experiment 2: Scaling Analyses}
 The objective of this experiment is primarily to measure both Strong Scaling and Weak Scaling analyses across  $P \in \{1,2,4,8\}$ MPI ranks. 
 Both scaling analysis are repeated with GPU acceleration within Experiment 4.
@@ -90,9 +93,11 @@ as the circuit structure will not change and rebuilding will waste precious time
 open access plan, Sessions (allowing multiple jobs to share a QPU reservation) are not supported, so each iteration submits an independent job through the 
 sessionless EstimatorV2 mode and then must re-enter the queue.    
 
-The QPU experiment was executed on March 26, 2026 against the QPU backend calibration data that was valid at the time of the remote
+The QPU experiment was executed on March 19, 2026 against the QPU backend calibration data that was valid at the time of the remote
 job submission. Results for the IBM experiment are presented in Tables~\ref{table:ibm_results} and~\ref{table:ibm_iterations}.
 
+
+% WILL EXPERICIENCE DRIFTS ONCE TASK D IS COMPLETED
 \subsection{Experiment 4: GPU-Accelerated Statevector}
 This experiment evaluates the effect of GPU acceleration on the distributed VQE pipeline, comparing the GPU 
 backend against the CPU-only results from Experiments 1 and 2. This will determine if the GPU acceleration will bypass the statevector build bottleneck as predicted by \textcite{bayraktar2023cuquantum}. 
@@ -107,22 +112,20 @@ construction and gate operations. The Docker build configurations were tested fo
 
 Both configurations use the same Python code path; the difference is found within the compiled Qiskit Aer backend linked at Docker build time.
 
-The GPU hardware used was an NVIDIA GeForce GTX 1650 Mobile running CUDA 12.6, representing an accessible, lower bound on GPU-accelerated performance as described in Section ~\ref{sec:methodology}.   
-% as the superior A100 HPC grade hardware
-% would provide the stack with a substantially greater speedup. However, this experiment will still prove the proposed architectural hypothesis of this paper, 
-% that GPU acceleration reduces time spent on the local serial statevector build enough to 
-% continue scaling the MPI distribution. Future work with an A100 GPU that has 16x more bandwidth will result substantial improvement.  
+The GPU hardware used was an NVIDIA A100-SXM4-40GB (Lambda Cloud), the primary validated hardware target for this stack.  
 
 For each configuration, total wall-clock time, per-iteration time, and speedup relative to the serial baseline 
 were recorded. Strong scaling and weak scaling analyses were repeated with GPU acceleration to compare against 
 the CPU-only scaling trials from Experiment 2.
+
+
 
 \subsection{Experiment 5: Checkpoint Resilience}
 This experiment is conducted to validate the checkpoint restart mechanism of the stack, which verifies that 
 the optimization can resume from a previously saved $\theta$ state without a loss of convergence progress. Checkpoints 
 are saved every 5 iterations (hardcoded in the file \texttt{interface.py}), along with a rolling retention of the 5 most recent 
 checkpoint files logged per molecule. This interval balances recovery granularity (at most 5 iterations 
-of work lost on failure) against I/O overhead when tested with less complex molecules within our benchmark. 
+of work lost on failure) against I/O overhead and uniformly applies over all benchmark molecules. 
 
 The molecule $H_{2}$ was selected in this experiment due to its low complexity and fast per iteration time, making it a 
 practical choice for repeated restart testing in this stack. The 7-layer diagnostic suite (\texttt{test\_layers\_run.py}) automatically executes this experiment:

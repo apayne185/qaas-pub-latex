@@ -241,8 +241,9 @@ Beyond the perviosuly determined internal baselines, the wall-clock performance 
 popular single-vendor simulations: PennyLane Lightning-GPU and Qiskit Aer's native distributed statevector MPI mode \texttt{blocking_enable=True}). Both simulators
 represent alternatives to this middleware, alongside implementing distributed statevector simulation rather than this stack's per rank replicated design (\S[Acceleration Layer]). 
 All three paths are run on the same GPU (A100-SXM4-40GB) instance, same seed, and the same ansatz across the six molecule benchmark set, allowing for the isolation 
-of the wall-clock cost of this stacks replicated statevector design vs distributed statvector simualtion. The comparison is reported with a single seeds
-rather than the $n{=}5$ methodology otherwise used in this stack. 
+of the wall-clock cost of this stacks replicated statevector design vs implementations that have distributed statevector simulation. 
+% THERE ARE MORE DETAILS TO BE ADDED HERE
+The comparison is reported with a single seeds rather than the $n{=}5$ methodology otherwise used in this stack. 
 
 
 \subsubsection{Quantitative Metrics}

@@ -39,3 +39,6 @@ __pycache__/
 *~
 .DS_Store
 Thumbs.db
+
+# Working notes (internal scratch, not part of the paper)
+NOTES.md

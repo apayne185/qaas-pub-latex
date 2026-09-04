@@ -6,6 +6,10 @@
 \usepackage[utf8]{inputenc}        % UTF-8 source encoding
 \usepackage{graphicx}              % figures (\includegraphics)
 \usepackage{hyperref}              % hyperlinks in PDF
+\usepackage{amsmath}              % math text helpers such as \text in equations
+\usepackage[numbers]{natbib}       % numeric citations; defines \citep and \citet
+\newcommand{\parencite}[1]{\citep{#1}} % compatibility alias for existing citations
+\newcommand{\textcite}[1]{\citet{#1}} % compatibility alias for existing citations
 \usepackage{xspace}                % smart spacing after macros
 
 

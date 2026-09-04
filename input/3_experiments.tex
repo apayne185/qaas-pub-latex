@@ -148,7 +148,7 @@ Both tests also are executed automatically as part of the 7-layer diagnostic sui
 
 \subsubsection{QPU Latency Spiking}
 This test simulates the realistic cloud QPU congestion by injecting random delays of 0.5--2.0\,s into the statevector 
-evaluation on odd-numbered, asymmetrical MPI ranks for unpredictable delays in the system, tested through 10 VQE iterations using $H_{2}$.  
+evaluation on odd-numbered MPI ranks, creating asymmetrical per rank delay patterns in the system, tested through 10 VQE iterations using $H_{2}$.  
 Criteria for passing is if all iterations complete without MPI timeout or a deadlock, all returned energies are finite 
 with no NaN or infinity from the delays, and lastly if the \texttt{MPI\_Allreduce} synchronization is maintained despite the variable per-rank timing. 
 The energy spread across iterations is then recorded for diagnostic purposes. 
@@ -166,3 +166,28 @@ forcing a recovery from the earlier checkpoint at iteration 5. The procedure her
 This test passes if the stack detects the missing iteration 10 checkpoint and falls back to the saved iteration 5, if 
 the post recovery energy trajectory continues descending (the optimizer continues improving), and lastly if  after 15 iterations the final energy
 is lower than the energy documented at iteration 5, confirming that no optimization progress was permanently lost during these simulated crashes.
+
+
+
+\subsection{Experiment 7: External Baseline Comparison (Lightining GPU, Aer-MPI)}
+In Experiment 4, the contribution of the stack's GPU acceletion path vs the CPU-only results from Experiments 1 and 2 is conducted, whereas this expierment 
+benchmarks the stack directly against alternate options of widely-used simulators: Pennylane Lightning-GPU and Qiskit Aer's native distributed statevector MPI mode (\texttt{AerSimulator(blocking_enable=True)}). 
+This is done in contrast to this stack's per-rank replicated statevector design (\S[Acceleration Layer]), with the alternative implementing distributed statevector construction, making 
+directly comparing the wall-clock time differences at the qubit count caused by the architectural variation between all options. 
+
+All three paths (\texttt{hpchybrid}), Lightning-GPU, Aer-MPI) were all run on one instance of the A100-SXM4-40GB GPU with identical SPSA hyperparameters, seed, and ansatz configuration (HWE-adaptive, EfficientSU2, full entanglement, $\text{adaptive_reps}=\min(\text{reps}+1, 3)$)
+across all 6 benchmarked molecules. The identical ansatz identity is enforced programmatically between the Lightning-GPU baseline and this stack through a comparison script asserting the Lightning parameter count 
+matches the closed-form prediction $2 n_{\text{qubits}} (\text{adaptive_reps}+1)$ before being able to proceed. This ensures no comparison can silently run on different or smaller entangled circuits instead of this stack's ansatz. 
+
+Each backend was run with a fixed iteration budget (100 iterations $H_2$, $LiH$, $BeH_2$, $H_2O$, 50 iterations for $NH_3$ and $N_2$ as their larger Pauli-term counts make 100 iterations expensive across 3 backends), rather than to convergence. % IS THIS SMART - REVIEW THIS CHOICE%  
+The wall clock time is directly comparable under this budget, without the results being affected by each backend's different convergence trajectories.  
+
+The Aer-MPI configuration uses a value \texttt{blocking_qubits} to control the statevector tile size (total chunks $= 2^{(n_{\text{qubits}} - \text{blocking_qubits})}$). These results use Aer's default sizing heuristic: $\text{blocking_qubits} = \max(n_{\text{qubits}}-2,\ n_{\text{qubits}}//2)$. 
+A seperate sweep over $\text{blocking_qubits} \in {14, 16, 18, 19}$ for $N_2$ restricted the values in order to avoid chunk-size blowup, 
+which was observed at more aggressive tiling. 
+
+% eported in \S[Results] to udnerstand if Aer-MPI competitiveness is sensitive to this tuning parameter
+
+
+ 
+

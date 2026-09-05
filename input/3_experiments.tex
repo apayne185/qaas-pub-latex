@@ -182,9 +182,12 @@ matches the closed-form prediction $2 n_{\text{qubits}} (\text{adaptive_reps}+1)
 Each backend was run with a fixed iteration budget (100 iterations $H_2$, $LiH$, $BeH_2$, $H_2O$, 50 iterations for $NH_3$ and $N_2$ as their larger Pauli-term counts make 100 iterations expensive across 3 backends), rather than to convergence. % IS THIS SMART - REVIEW THIS CHOICE%  
 The wall clock time is directly comparable under this budget, without the results being affected by each backend's different convergence trajectories.  
 
-The Aer-MPI configuration uses a value \texttt{blocking_qubits} to control the statevector tile size (total chunks $= 2^{(n_{\text{qubits}} - \text{blocking_qubits})}$). These results use Aer's default sizing heuristic: $\text{blocking_qubits} = \max(n_{\text{qubits}}-2,\ n_{\text{qubits}}//2)$. 
-A seperate sweep over $\text{blocking_qubits} \in {14, 16, 18, 19}$ for $N_2$ restricted the values in order to avoid chunk-size blowup, 
-which was observed at more aggressive tiling. 
+The Aer-MPI configuration uses a value \texttt{blocking_qubits} to control the statevector tile size (total chunks $= 2^{(n_{\text{qubits}} - \text{blocking_qubits})}$). 
+These results use Aer's default sizing heuristic: $\text{blocking_qubits} = \max(n_{\text{qubits}}-2,\ n_{\text{qubits}}//2)$. 
+A seperate sweep over $\text{blocking_qubits} \in {14, 16, 18, 19}$ for $N_2$, restricted to this range in order to avoid chunk-size blowup, 
+which was observed at more aggressive tiling. Here it was found the wall-clock time varied marginally across the range (128.9-136.1 s mean of two trials per value), where no value
+produced a meaningful improvement compared to the default heuristic of Aer-MPI ($\text{blocking_qubits}=18$, 129.8,s), indicating a improved performance from \texttt{hpchybrid} at $N_2$ when 
+compared to Aer-MPI. 
 
 % eported in \S[Results] to udnerstand if Aer-MPI competitiveness is sensitive to this tuning parameter
 
